@@ -1,7 +1,7 @@
 use bitvec::prelude::*;
 use image::{DynamicImage, Pixel};
 
-use crate::prelude::{EncodingOptions, RgbChannel};
+use crate::prelude::{Encoder, RgbChannel};
 
 pub struct JpegEncoder {
     lsb_c: usize,
@@ -35,40 +35,50 @@ impl JpegEncoder {
     fn encode_buffer(&self, buf: &[u8], data: &[u8]) -> Result<DynamicImage, String> {
         if let Ok(img) = image::load_from_memory(buf) {
             if bytes_need_for_data(data, self.lsb_c) <= img.as_bytes().len() {
-                // let mut change_ops: usize = 0;
-                let mut data_iter = data.iter();
                 let mut rgb_img = img.to_rgb8();
-                'pixels: for pixel in rgb_img.pixels_mut() {
-                    let channel_opt = pixel
-                        .channels_mut()
-                        .get_mut::<usize>(self.encoding_channel.into());
-                    if let Some(channel) = channel_opt {
-                        let byte_to_modify = channel.view_bits_mut::<Lsb0>();
-                        match data_iter.next() {
-                            Some(byte_to_encode) => {
-                                let raw_bits_to_encode;
-                                raw_bits_to_encode = bitvec::ptr::bitslice_from_raw_parts::<Lsb0, u8>(
-                                    BitPtr::from_ref(byte_to_encode),
-                                    8,
-                                );
-                                let bits_to_encode;
-                                unsafe {
-                                    bits_to_encode = raw_bits_to_encode.as_ref();
-                                }
-                                if let Some(bits_ptr) = bits_to_encode {
-                                    // change_ops += self.lsb_c;
-                                    let bits_to_encode: &BitSlice<Lsb0, u8> = &bits_ptr[0..self.lsb_c];
-                                    for i in 0..self.lsb_c {
-                                        byte_to_modify.set(i, bits_to_encode[i]);
-                                    }
-                                }
+                let mut pixel_iter = rgb_img.pixels_mut().skip(self.offset);
+                for byte_to_encode in data.iter() {
+                    let raw_bits_to_encode;
+                    raw_bits_to_encode = bitvec::ptr::bitslice_from_raw_parts::<Lsb0, u8>(
+                        BitPtr::from_ref(byte_to_encode),
+                        8,
+                    );
+                    let bits_to_encode;
+                    unsafe {
+                        bits_to_encode = raw_bits_to_encode.as_ref();
+                    }
+                    if let Some(bits_ptr) = bits_to_encode {
+                        let bits_to_encode: &BitSlice<Lsb0, u8> = &bits_ptr[0..self.lsb_c];
+                        for i in 0..self.lsb_c {
+                            if let Some(byte_to_modify) = pixel_iter.next() {
+                                byte_to_modify
+                                    .channels_mut()
+                                    .get_mut::<usize>(self.encoding_channel.into())
+                                    .unwrap()
+                                    .view_bits_mut::<Lsb0>()
+                                    .set(i, bits_to_encode[i]);
+                            } else {
+                                return Err(String::from(
+                                    "Not enough space in image to fit specified data",
+                                ));
                             }
-                            None => break 'pixels,
                         }
-                    } else {
-                        return Err(String::from("Specified channel not found"));
                     }
                 }
+
+                let old_img = img.to_rgb8();
+                let all_orig_pixels = old_img.enumerate_pixels().collect::<Vec<(u32, u32, &image::Rgb<u8>)>>();
+                let all_new_pixels = rgb_img.enumerate_pixels().collect::<Vec<(u32, u32, &image::Rgb<u8>)>>();
+                let mut diff = 0;
+                for i in 0..all_orig_pixels.len() {
+                    if all_new_pixels[i].2 != all_orig_pixels[i].2 {
+                        diff += 1;
+                        println!("Different pixel at {}x{} - {:?} - {:?}", all_new_pixels[i].0, all_new_pixels[i].1, all_orig_pixels[i].2, all_new_pixels[i].2);
+                    }
+                }
+
+                println!("{} different pixels", diff);
+
                 Ok(DynamicImage::ImageRgb8(rgb_img))
             } else {
                 Err(String::from(
@@ -81,7 +91,7 @@ impl JpegEncoder {
     }
 }
 
-impl EncodingOptions for JpegEncoder {
+impl Encoder for JpegEncoder {
     /// Skip the first `offset` bytes in the source buffer
     fn offset(&mut self, offset: usize) -> &mut Self {
         self.offset = offset;

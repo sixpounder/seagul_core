@@ -25,7 +25,8 @@ impl Into<usize> for RgbChannel {
     }
 }
 
-pub trait EncodingOptions {
+/// Encoding options specify how to interpret a set of bytes in an image
+pub trait Encoder {
     /// Sets the number of least significative bits to edit for each
     /// byte in the source buffer. The higher the value gets
     /// the least space is required to encode data into the source, but the resulting

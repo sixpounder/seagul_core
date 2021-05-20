@@ -1,6 +1,6 @@
 use bitvec::{order::Lsb0, view::BitView};
 
-use crate::prelude::{EncodingOptions, RgbChannel};
+use crate::prelude::{Encoder, RgbChannel};
 
 pub struct Decoded {
     data: Vec<u8>,
@@ -53,12 +53,13 @@ impl JpegDecoder {
             let mut sequence_hint: Vec<u8> = Vec::with_capacity(target_sequence_len);
             let mut current_byte: u8 = 0b0000_0000;
             let mut iter_count: usize = 0;
-            'pixel_iter: for pixel in img.to_rgb16().pixels().skip(self.offset) {
+            'pixel_iter: for pixel in img.to_rgb8().pixels().skip(self.offset) {
                 let pixel_lsb = pixel[self.encoding_channel.into()].view_bits::<Lsb0>();
                 let current_byte_as_bits = current_byte.view_bits_mut::<Lsb0>();
                 for i in 0..self.lsb_c {
                     current_byte_as_bits.set(i, pixel_lsb[i]);
                 }
+                iter_count += 1;
                 // Check if a single output byte is completed
                 if iter_count == byte_step {
                     decoded.push(current_byte);
@@ -75,8 +76,6 @@ impl JpegDecoder {
                     }
                     iter_count = 0;
                     current_byte = 0b0000_0000;
-                } else {
-                    iter_count += 1;
                 }
             }
 
@@ -90,7 +89,7 @@ impl JpegDecoder {
     }
 }
 
-impl EncodingOptions for JpegDecoder {
+impl Encoder for JpegDecoder {
     /// Skip the first `offset` bytes in the source buffer
     fn offset(&mut self, offset: usize) -> &mut Self {
         self.offset = offset;

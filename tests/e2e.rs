@@ -4,8 +4,14 @@ use image::EncodableLayout;
 use seagul::{decoder::JpegDecoder, prelude::*};
 use seagul::encoder::JpegEncoder;
 
+fn ensure_out_dir() -> std::io::Result<()> {
+    std::fs::create_dir_all("tests/out")
+}
+
 #[test]
 fn encode_sample_image() {
+    ensure_out_dir().expect("Could not create output directory");
+
     let verses = "
         Midway upon the journey of our life
         I found myself within a forest dark,
@@ -25,6 +31,8 @@ fn encode_sample_image() {
     let mut source_data: Vec<u8> = Vec::new();
     file.read_to_end(&mut source_data)
         .expect("Cannot test image");
+
+    image::load_from_memory(source_data.as_bytes()).unwrap().save("tests/out/unmodified.jpeg").unwrap();
 
     let encode_result = JpegEncoder::new()
         .use_n_lsb(2)
