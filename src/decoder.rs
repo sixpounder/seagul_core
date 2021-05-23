@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use bitvec::{order::Lsb0, view::BitView};
-use image::EncodableLayout;
 
 use crate::prelude::{Encoder, RgbChannel};
 
@@ -11,14 +10,12 @@ pub struct DecodedImage {
 }
 
 impl DecodedImage {
-    pub fn as_string(&self) -> Cow<str> {
-        String::from_utf8_lossy(self.data.as_bytes())
-    }
-}
-
-impl DecodedImage {
     pub fn as_raw(&self) -> Cow<str> {
         String::from_utf8_lossy(&self.data)
+    }
+
+    pub fn as_string(&self) -> String {
+        String::from_utf8(self.data.clone()).unwrap()
     }
 
     pub fn embedded_data(&self) -> &Vec<u8> {

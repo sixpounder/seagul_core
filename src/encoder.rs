@@ -1,30 +1,43 @@
-use std::fs::File;
+use std::{fmt::Display, fs::File};
 
 use bitvec::prelude::*;
 use image::{DynamicImage, EncodableLayout, Pixel, Rgb};
 
 use crate::prelude::{Encoder, RgbChannel};
 
+#[derive(Debug)]
 pub struct ColorChange(u32, u32, Rgb<u8>, Rgb<u8>);
 
+impl Display for ColorChange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}x{} from {:?} to {:?}", self.0, self.1, self.2, self.3)
+    }
+}
+
+#[derive(Debug)]
 pub struct EncodeMap {
     pub encoded_byte: u8,
-    pub affected_points: Vec<ColorChange>
+    pub affected_points: Vec<ColorChange>,
 }
 
 impl EncodeMap {
     pub fn new() -> Self {
         Self {
             encoded_byte: 0,
-            affected_points: vec![]
+            affected_points: vec![],
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.affected_points.len()
     }
 }
 
+#[derive(Debug)]
 pub struct EncodedImage {
     altered_image: image::DynamicImage,
     original_image: image::DynamicImage,
-    map: Vec<EncodeMap>
+    map: Vec<EncodeMap>,
 }
 
 impl EncodedImage {
@@ -42,12 +55,8 @@ impl EncodedImage {
 
     pub fn save(&self, path: &str) -> Result<(), String> {
         match self.as_dynamic_image().save(path) {
-            Ok(_) => {
-                Ok(())
-            }
-            Err(e) => {
-                Err(e.to_string())
-            }
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.to_string()),
         }
     }
 }
@@ -112,11 +121,6 @@ impl JpegEncoder {
         self
     }
 
-    // pub fn source_data(&mut self, source_data: Vec<u8>) -> &mut Self {
-    //     self.source = source_data.clone();
-    //     self
-    // }
-
     pub fn encode_data<'a>(&self, data: &'a [u8]) -> Result<EncodedImage, String> {
         let img = &self.source_image;
         let mut encode_maps: Vec<EncodeMap> = vec![];
@@ -128,8 +132,9 @@ impl JpegEncoder {
                 .skip(self.offset)
                 .step_by(self.skip_c);
             for byte_to_encode in data.iter() {
+                let mut current_byte_iter_count = 0;
                 let mut current_byte_map = EncodeMap::new();
-                current_byte_map.encoded_byte = *byte_to_encode;
+                current_byte_map.encoded_byte = byte_to_encode.clone();
 
                 let raw_bits_to_encode;
                 raw_bits_to_encode = bitvec::ptr::bitslice_from_raw_parts::<Lsb0, u8>(
@@ -141,34 +146,35 @@ impl JpegEncoder {
                     bits_to_encode = raw_bits_to_encode.as_ref();
                 }
                 if let Some(bits_ptr) = bits_to_encode {
-                    let bits_to_encode: &BitSlice<Lsb0, u8> = &bits_ptr[0..self.lsb_c];
-                    if let Some(pixel_to_modify) = pixel_iter.next() {
-                        // println!(
-                        //     "Encoding {} bits at pixel {}x{}",
-                        //     self.lsb_c, byte_to_modify.0, byte_to_modify.1
-                        // );
-                        let mut color_change = ColorChange(
-                            pixel_to_modify.0,
-                            pixel_to_modify.1,
-                            pixel_to_modify.2.clone(),
-                            Rgb::from([0, 0, 0])
-                        );
-                        let bits_to_modify = pixel_to_modify
-                            .2
-                            .channels_mut()
-                            .get_mut::<usize>(self.encoding_channel.into())
-                            .unwrap()
-                            .view_bits_mut::<Lsb0>();
-                        for i in 0..self.lsb_c {
-                            bits_to_modify.set(i, bits_to_encode[i]);
-                        }
+                    // eprintln!("Encoding byte (lsb): {}", bits_ptr);
+                    while current_byte_iter_count < std::mem::size_of::<u8>() * 8 {
+                        let bits_to_encode_slice: &BitSlice<Lsb0, u8> = &bits_ptr
+                            [current_byte_iter_count..current_byte_iter_count + self.lsb_c];
+                        if let Some(pixel_to_modify) = pixel_iter.next() {
+                            let mut color_change = ColorChange(
+                                pixel_to_modify.0,
+                                pixel_to_modify.1,
+                                pixel_to_modify.2.clone(),
+                                Rgb::from([0, 0, 0]),
+                            );
+                            let bits_to_modify = pixel_to_modify
+                                .2
+                                .channels_mut()
+                                .get_mut::<usize>(self.encoding_channel.into())
+                                .unwrap()
+                                .view_bits_mut::<Lsb0>();
+                            for i in 0..self.lsb_c {
+                                bits_to_modify.set(i, bits_to_encode_slice[i]);
+                            }
 
-                        color_change.3 = pixel_to_modify.2.clone();
-                        current_byte_map.affected_points.push(color_change);
-                    } else {
-                        return Err(String::from(
-                            "Not enough space in image to fit specified data",
-                        ));
+                            color_change.3 = pixel_to_modify.2.clone();
+                            current_byte_map.affected_points.push(color_change);
+                            current_byte_iter_count += self.lsb_c;
+                        } else {
+                            return Err(String::from(
+                                "Not enough space in image to fit specified data",
+                            ));
+                        }
                     }
                 }
 
@@ -178,7 +184,7 @@ impl JpegEncoder {
             Ok(EncodedImage {
                 original_image: img.clone(),
                 altered_image: DynamicImage::ImageRgb8(rgb_img),
-                map: encode_maps
+                map: encode_maps,
             })
         } else {
             Err(String::from(
@@ -223,6 +229,18 @@ impl Encoder for JpegEncoder {
 
 fn bytes_needed_for_data(data: &[u8], using_n_lsb: usize) -> usize {
     (data.len() * 8) / using_n_lsb
+}
+
+fn eprint_color_changes(byte_map: &EncodeMap, steps: usize) {
+    eprint!(
+        "Encoded in {} steps, {} pixel(s) modified -> ",
+        steps,
+        byte_map.affected_points.len()
+    );
+    for item in &byte_map.affected_points {
+        eprint!(" | {}", item);
+    }
+    println!("\n\n");
 }
 
 #[cfg(test)]
