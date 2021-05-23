@@ -1,9 +1,9 @@
 use std::{fmt::Display, fs::File};
 
 use bitvec::prelude::*;
-use image::{DynamicImage, EncodableLayout, Pixel, Rgb};
+use image::{DynamicImage, EncodableLayout, GenericImageView, Pixel};
 
-use crate::prelude::{Encoder, RgbChannel};
+use crate::prelude::{ImageIntrinsics, Image, Rgb, RgbChannel};
 
 #[derive(Debug)]
 pub struct ColorChange(u32, u32, Rgb<u8>, Rgb<u8>);
@@ -41,56 +41,55 @@ pub struct EncodedImage {
 }
 
 impl EncodedImage {
-    pub fn as_dynamic_image(&self) -> &DynamicImage {
-        &self.altered_image
-    }
-
-    pub fn get_original(&self) -> &DynamicImage {
-        &self.original_image
-    }
-
     pub fn changes(&self) -> &Vec<EncodeMap> {
         &self.map
     }
 
     pub fn save(&self, path: &str) -> Result<(), String> {
-        match self.as_dynamic_image().save(path) {
+        let target_dimensions = self.altered_image.dimensions();
+        match image::save_buffer(
+            path,
+            self.altered_image.as_bytes(),
+            target_dimensions.0,
+            target_dimensions.1,
+            image::ColorType::Rgb8,
+        ) {
             Ok(_) => Ok(()),
             Err(e) => Err(e.to_string()),
         }
     }
 }
 
-pub struct JpegEncoder {
+pub struct ImageEncoder {
     lsb_c: usize,
     skip_c: usize,
     offset: usize,
+    spread: bool,
     encoding_channel: RgbChannel,
-    marker: Option<&'static [u8]>,
     source_image: DynamicImage,
 }
 
-impl Default for JpegEncoder {
+impl Default for ImageEncoder {
     fn default() -> Self {
         Self {
             lsb_c: 1,
             skip_c: 1,
             offset: 0,
-            marker: None,
+            spread: false,
             encoding_channel: RgbChannel::Blue,
             source_image: DynamicImage::new_rgb8(16, 16),
         }
     }
 }
 
-impl From<&str> for JpegEncoder {
+impl From<&str> for ImageEncoder {
     fn from(path: &str) -> Self {
         let mut file = File::open(path).expect("Test image not found");
         Self::from(&mut file as &mut dyn std::io::Read)
     }
 }
 
-impl From<&mut dyn std::io::Read> for JpegEncoder {
+impl From<&mut dyn std::io::Read> for ImageEncoder {
     fn from(readable: &mut dyn std::io::Read) -> Self {
         let mut source_data: Vec<u8> = Vec::new();
         readable
@@ -99,29 +98,31 @@ impl From<&mut dyn std::io::Read> for JpegEncoder {
 
         let img = image::load_from_memory(source_data.as_bytes()).unwrap();
 
-        Self {
-            lsb_c: 1,
-            skip_c: 1,
-            offset: 0,
-            marker: None,
-            encoding_channel: RgbChannel::Blue,
-            source_image: img,
-        }
+        let mut this = Self::default();
+        this.source_image = img;
+
+        this
     }
 }
 
-impl JpegEncoder {
+impl ImageEncoder {
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Places a marker at the end of the encoded sequence
-    pub fn place_marker(&mut self, marker: Option<&'static [u8]>) -> &mut Self {
-        self.marker = marker;
-        self
+    pub fn encode_string(&self, data: String) -> Result<EncodedImage, String> {
+        self.encode_data(data.as_bytes())
     }
 
-    pub fn encode_data<'a>(&self, data: &'a [u8]) -> Result<EncodedImage, String> {
+    pub fn encode_bytes<'a>(&self, data: &'a [u8]) -> Result<EncodedImage, String> {
+        self.encode_data(data.as_bytes())
+    }
+
+    pub fn encode_image(&self, image: &Image) -> Result<EncodedImage, String> {
+        self.encode_data(image.to_rgb8().as_bytes())
+    }
+
+    fn encode_data<'a>(&self, data: &'a [u8]) -> Result<EncodedImage, String> {
         let img = &self.source_image;
         let mut encode_maps: Vec<EncodeMap> = vec![];
 
@@ -136,15 +137,8 @@ impl JpegEncoder {
                 let mut current_byte_map = EncodeMap::new();
                 current_byte_map.encoded_byte = byte_to_encode.clone();
 
-                let raw_bits_to_encode;
-                raw_bits_to_encode = bitvec::ptr::bitslice_from_raw_parts::<Lsb0, u8>(
-                    BitPtr::from_ref(byte_to_encode),
-                    8,
-                );
-                let bits_to_encode;
-                unsafe {
-                    bits_to_encode = raw_bits_to_encode.as_ref();
-                }
+                let bits_to_encode = byte_to_bits(byte_to_encode);
+
                 if let Some(bits_ptr) = bits_to_encode {
                     // eprintln!("Encoding byte (lsb): {}", bits_ptr);
                     while current_byte_iter_count < std::mem::size_of::<u8>() * 8 {
@@ -154,7 +148,7 @@ impl JpegEncoder {
                             let mut color_change = ColorChange(
                                 pixel_to_modify.0,
                                 pixel_to_modify.1,
-                                pixel_to_modify.2.clone(),
+                                pixel_to_modify.2.clone().into(),
                                 Rgb::from([0, 0, 0]),
                             );
                             let bits_to_modify = pixel_to_modify
@@ -167,7 +161,7 @@ impl JpegEncoder {
                                 bits_to_modify.set(i, bits_to_encode_slice[i]);
                             }
 
-                            color_change.3 = pixel_to_modify.2.clone();
+                            color_change.3 = pixel_to_modify.2.clone().into();
                             current_byte_map.affected_points.push(color_change);
                             current_byte_iter_count += self.lsb_c;
                         } else {
@@ -194,7 +188,7 @@ impl JpegEncoder {
     }
 }
 
-impl Encoder for JpegEncoder {
+impl ImageIntrinsics for ImageEncoder {
     /// Skip the first `offset` bytes in the source buffer
     fn offset(&mut self, offset: usize) -> &mut Self {
         self.offset = offset;
@@ -225,12 +219,31 @@ impl Encoder for JpegEncoder {
         }
         self
     }
+
+    fn spread(&mut self, value: bool) -> &mut Self {
+        self.spread = value;
+        self
+    }
 }
 
 fn bytes_needed_for_data(data: &[u8], using_n_lsb: usize) -> usize {
     (data.len() * 8) / using_n_lsb
 }
 
+fn byte_to_bits(byte: &u8) -> Option<&BitSlice<Lsb0, u8>> {
+    let raw_bits = bitvec::ptr::bitslice_from_raw_parts::<Lsb0, u8>(
+        BitPtr::from_ref(byte),
+        8,
+    );
+    let bits;
+    unsafe {
+        bits = raw_bits.as_ref();
+    }
+
+    bits
+}
+
+#[allow(dead_code)]
 fn eprint_color_changes(byte_map: &EncodeMap, steps: usize) {
     eprint!(
         "Encoded in {} steps, {} pixel(s) modified -> ",
@@ -240,7 +253,7 @@ fn eprint_color_changes(byte_map: &EncodeMap, steps: usize) {
     for item in &byte_map.affected_points {
         eprint!(" | {}", item);
     }
-    println!("\n\n");
+    eprintln!("\n\n");
 }
 
 #[cfg(test)]
@@ -261,7 +274,7 @@ mod test {
     fn simple_encoding() {
         ensure_out_dir().unwrap();
 
-        let encode_result = super::JpegEncoder::from("tests/images/red_panda.jpg")
+        let encode_result = super::ImageEncoder::from("tests/images/red_panda.jpg")
             .use_n_lsb(2)
             .encode_data(
                 b"
