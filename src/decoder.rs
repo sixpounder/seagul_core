@@ -1,14 +1,27 @@
+use std::borrow::Cow;
+
 use bitvec::{order::Lsb0, view::BitView};
+use image::EncodableLayout;
 
 use crate::prelude::{Encoder, RgbChannel};
 
-pub struct Decoded {
+pub struct DecodedImage {
     data: Vec<u8>,
     hit_marker: bool,
 }
 
-impl Decoded {
-    pub fn data(&self) -> &Vec<u8> {
+impl DecodedImage {
+    pub fn as_string(&self) -> Cow<str> {
+        String::from_utf8_lossy(self.data.as_bytes())
+    }
+}
+
+impl DecodedImage {
+    pub fn as_raw(&self) -> Cow<str> {
+        String::from_utf8_lossy(&self.data)
+    }
+
+    pub fn embedded_data(&self) -> &Vec<u8> {
         &self.data
     }
 
@@ -31,7 +44,7 @@ impl JpegDecoder {
     pub fn new() -> Self {
         Self {
             lsb_c: 1,
-            skip_c: 0,
+            skip_c: 1,
             offset: 0,
             encoding_channel: RgbChannel::Blue,
             marker: &[],
@@ -44,42 +57,54 @@ impl JpegDecoder {
         self
     }
 
-    pub fn decode_buffer(&self, buf: &[u8]) -> Result<Decoded, String> {
-        let byte_step = 8 / self.lsb_c;
+    pub fn decode_buffer(&self, buf: &[u8]) -> Result<DecodedImage, String> {
+        let byte_step = std::mem::size_of::<u8>() * 8;
         let mut decoded: Vec<u8> = Vec::with_capacity(100);
         let mut hit_marker = false;
         let target_sequence_len = self.marker.len();
         if let Ok(img) = image::load_from_memory(buf) {
             let mut sequence_hint: Vec<u8> = Vec::with_capacity(target_sequence_len);
             let mut current_byte: u8 = 0b0000_0000;
+            let mut current_byte_as_bits = current_byte.view_bits_mut::<Lsb0>();
             let mut iter_count: usize = 0;
-            'pixel_iter: for pixel in img.to_rgb8().pixels().skip(self.offset) {
-                let pixel_lsb = pixel[self.encoding_channel.into()].view_bits::<Lsb0>();
-                let current_byte_as_bits = current_byte.view_bits_mut::<Lsb0>();
+            let rgb_img = img.to_rgb8();
+            'pixel_iter: for pixel in rgb_img
+                .enumerate_pixels()
+                .skip(self.offset)
+                .step_by(self.skip_c)
+            {
+                let pixel_lsb = pixel.2[self.encoding_channel.into()].view_bits::<Lsb0>();
+
+                // take lsb_c from this pixel channel
                 for i in 0..self.lsb_c {
-                    current_byte_as_bits.set(i, pixel_lsb[i]);
+                    current_byte_as_bits.set(iter_count, pixel_lsb[i]);
+                    iter_count += 1;
                 }
-                iter_count += 1;
+
                 // Check if a single output byte is completed
                 if iter_count == byte_step {
                     decoded.push(current_byte);
                     if target_sequence_len != 0 {
                         sequence_hint.push(current_byte);
+
+                        if sequence_hint.len() > target_sequence_len {
+                            sequence_hint.remove(0);
+                        }
+
                         if sequence_hint.len() == target_sequence_len {
                             if sequence_hint.as_slice() == self.marker {
                                 hit_marker = true;
                                 break 'pixel_iter;
-                            } else {
-                                sequence_hint.remove(0);
                             }
                         }
                     }
                     iter_count = 0;
                     current_byte = 0b0000_0000;
+                    current_byte_as_bits = current_byte.view_bits_mut::<Lsb0>();
                 }
             }
 
-            Ok(Decoded {
+            Ok(DecodedImage {
                 data: decoded,
                 hit_marker,
             })
@@ -109,8 +134,13 @@ impl Encoder for JpegDecoder {
         self
     }
 
-    fn skip_n_pixels(&mut self, n: usize) -> &mut Self {
-        self.skip_c = n;
+    /// When decoding data, `n` pixels will be skipped after each edited pixel
+    fn step_by_n_pixels(&mut self, n: usize) -> &mut Self {
+        if n < 1 {
+            self.skip_c = 1;
+        } else {
+            self.skip_c = n;
+        }
         self
     }
 }

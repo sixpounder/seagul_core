@@ -1,92 +1,189 @@
+use std::fs::File;
+
 use bitvec::prelude::*;
-use image::{DynamicImage, Pixel};
+use image::{DynamicImage, EncodableLayout, Pixel, Rgb};
 
 use crate::prelude::{Encoder, RgbChannel};
+
+pub struct ColorChange(u32, u32, Rgb<u8>, Rgb<u8>);
+
+pub struct EncodeMap {
+    pub encoded_byte: u8,
+    pub affected_points: Vec<ColorChange>
+}
+
+impl EncodeMap {
+    pub fn new() -> Self {
+        Self {
+            encoded_byte: 0,
+            affected_points: vec![]
+        }
+    }
+}
+
+pub struct EncodedImage {
+    altered_image: image::DynamicImage,
+    original_image: image::DynamicImage,
+    map: Vec<EncodeMap>
+}
+
+impl EncodedImage {
+    pub fn as_dynamic_image(&self) -> &DynamicImage {
+        &self.altered_image
+    }
+
+    pub fn get_original(&self) -> &DynamicImage {
+        &self.original_image
+    }
+
+    pub fn changes(&self) -> &Vec<EncodeMap> {
+        &self.map
+    }
+
+    pub fn save(&self, path: &str) -> Result<(), String> {
+        match self.as_dynamic_image().save(path) {
+            Ok(_) => {
+                Ok(())
+            }
+            Err(e) => {
+                Err(e.to_string())
+            }
+        }
+    }
+}
 
 pub struct JpegEncoder {
     lsb_c: usize,
     skip_c: usize,
     offset: usize,
     encoding_channel: RgbChannel,
-    source: Vec<u8>,
+    marker: Option<&'static [u8]>,
+    source_image: DynamicImage,
+}
+
+impl Default for JpegEncoder {
+    fn default() -> Self {
+        Self {
+            lsb_c: 1,
+            skip_c: 1,
+            offset: 0,
+            marker: None,
+            encoding_channel: RgbChannel::Blue,
+            source_image: DynamicImage::new_rgb8(16, 16),
+        }
+    }
+}
+
+impl From<&str> for JpegEncoder {
+    fn from(path: &str) -> Self {
+        let mut file = File::open(path).expect("Test image not found");
+        Self::from(&mut file as &mut dyn std::io::Read)
+    }
+}
+
+impl From<&mut dyn std::io::Read> for JpegEncoder {
+    fn from(readable: &mut dyn std::io::Read) -> Self {
+        let mut source_data: Vec<u8> = Vec::new();
+        readable
+            .read_to_end(&mut source_data)
+            .expect("Cannot load image from this path");
+
+        let img = image::load_from_memory(source_data.as_bytes()).unwrap();
+
+        Self {
+            lsb_c: 1,
+            skip_c: 1,
+            offset: 0,
+            marker: None,
+            encoding_channel: RgbChannel::Blue,
+            source_image: img,
+        }
+    }
 }
 
 impl JpegEncoder {
     pub fn new() -> Self {
-        Self {
-            lsb_c: 1,
-            skip_c: 0,
-            offset: 0,
-            encoding_channel: RgbChannel::Blue,
-            source: vec![],
-        }
+        Self::default()
     }
 
-    pub fn source_data(&mut self, source_data: Vec<u8>) -> &mut Self {
-        self.source = source_data.clone();
+    /// Places a marker at the end of the encoded sequence
+    pub fn place_marker(&mut self, marker: Option<&'static [u8]>) -> &mut Self {
+        self.marker = marker;
         self
     }
 
-    pub fn encode_data(&self, data: &[u8]) -> Result<DynamicImage, String> {
-        let mut s = self.source.clone();
-        self.encode_buffer(&mut s, data)
-    }
+    // pub fn source_data(&mut self, source_data: Vec<u8>) -> &mut Self {
+    //     self.source = source_data.clone();
+    //     self
+    // }
 
-    fn encode_buffer(&self, buf: &[u8], data: &[u8]) -> Result<DynamicImage, String> {
-        if let Ok(img) = image::load_from_memory(buf) {
-            if bytes_need_for_data(data, self.lsb_c) <= img.as_bytes().len() {
-                let mut rgb_img = img.to_rgb8();
-                let mut pixel_iter = rgb_img.pixels_mut().skip(self.offset);
-                for byte_to_encode in data.iter() {
-                    let raw_bits_to_encode;
-                    raw_bits_to_encode = bitvec::ptr::bitslice_from_raw_parts::<Lsb0, u8>(
-                        BitPtr::from_ref(byte_to_encode),
-                        8,
-                    );
-                    let bits_to_encode;
-                    unsafe {
-                        bits_to_encode = raw_bits_to_encode.as_ref();
-                    }
-                    if let Some(bits_ptr) = bits_to_encode {
-                        let bits_to_encode: &BitSlice<Lsb0, u8> = &bits_ptr[0..self.lsb_c];
+    pub fn encode_data<'a>(&self, data: &'a [u8]) -> Result<EncodedImage, String> {
+        let img = &self.source_image;
+        let mut encode_maps: Vec<EncodeMap> = vec![];
+
+        if bytes_needed_for_data(data, self.lsb_c) <= img.as_bytes().len() {
+            let mut rgb_img = img.to_rgb8();
+            let mut pixel_iter = rgb_img
+                .enumerate_pixels_mut()
+                .skip(self.offset)
+                .step_by(self.skip_c);
+            for byte_to_encode in data.iter() {
+                let mut current_byte_map = EncodeMap::new();
+                current_byte_map.encoded_byte = *byte_to_encode;
+
+                let raw_bits_to_encode;
+                raw_bits_to_encode = bitvec::ptr::bitslice_from_raw_parts::<Lsb0, u8>(
+                    BitPtr::from_ref(byte_to_encode),
+                    8,
+                );
+                let bits_to_encode;
+                unsafe {
+                    bits_to_encode = raw_bits_to_encode.as_ref();
+                }
+                if let Some(bits_ptr) = bits_to_encode {
+                    let bits_to_encode: &BitSlice<Lsb0, u8> = &bits_ptr[0..self.lsb_c];
+                    if let Some(pixel_to_modify) = pixel_iter.next() {
+                        // println!(
+                        //     "Encoding {} bits at pixel {}x{}",
+                        //     self.lsb_c, byte_to_modify.0, byte_to_modify.1
+                        // );
+                        let mut color_change = ColorChange(
+                            pixel_to_modify.0,
+                            pixel_to_modify.1,
+                            pixel_to_modify.2.clone(),
+                            Rgb::from([0, 0, 0])
+                        );
+                        let bits_to_modify = pixel_to_modify
+                            .2
+                            .channels_mut()
+                            .get_mut::<usize>(self.encoding_channel.into())
+                            .unwrap()
+                            .view_bits_mut::<Lsb0>();
                         for i in 0..self.lsb_c {
-                            if let Some(byte_to_modify) = pixel_iter.next() {
-                                byte_to_modify
-                                    .channels_mut()
-                                    .get_mut::<usize>(self.encoding_channel.into())
-                                    .unwrap()
-                                    .view_bits_mut::<Lsb0>()
-                                    .set(i, bits_to_encode[i]);
-                            } else {
-                                return Err(String::from(
-                                    "Not enough space in image to fit specified data",
-                                ));
-                            }
+                            bits_to_modify.set(i, bits_to_encode[i]);
                         }
+
+                        color_change.3 = pixel_to_modify.2.clone();
+                        current_byte_map.affected_points.push(color_change);
+                    } else {
+                        return Err(String::from(
+                            "Not enough space in image to fit specified data",
+                        ));
                     }
                 }
 
-                let old_img = img.to_rgb8();
-                let all_orig_pixels = old_img.enumerate_pixels().collect::<Vec<(u32, u32, &image::Rgb<u8>)>>();
-                let all_new_pixels = rgb_img.enumerate_pixels().collect::<Vec<(u32, u32, &image::Rgb<u8>)>>();
-                let mut diff = 0;
-                for i in 0..all_orig_pixels.len() {
-                    if all_new_pixels[i].2 != all_orig_pixels[i].2 {
-                        diff += 1;
-                        println!("Different pixel at {}x{} - {:?} - {:?}", all_new_pixels[i].0, all_new_pixels[i].1, all_orig_pixels[i].2, all_new_pixels[i].2);
-                    }
-                }
-
-                println!("{} different pixels", diff);
-
-                Ok(DynamicImage::ImageRgb8(rgb_img))
-            } else {
-                Err(String::from(
-                    "Not enough space in image to fit specified data",
-                ))
+                encode_maps.push(current_byte_map);
             }
+
+            Ok(EncodedImage {
+                original_image: img.clone(),
+                altered_image: DynamicImage::ImageRgb8(rgb_img),
+                map: encode_maps
+            })
         } else {
-            Err(String::from("Could not decode image"))
+            Err(String::from(
+                "Not enough space in image to fit specified data",
+            ))
         }
     }
 }
@@ -114,37 +211,40 @@ impl Encoder for JpegEncoder {
     }
 
     /// When encoding data, `n` pixels will be skipped after each edited pixel
-    fn skip_n_pixels(&mut self, n: usize) -> &mut Self {
-        self.skip_c = n;
+    fn step_by_n_pixels(&mut self, n: usize) -> &mut Self {
+        if n < 1 {
+            self.skip_c = 1;
+        } else {
+            self.skip_c = n;
+        }
         self
     }
 }
 
-fn bytes_need_for_data(data: &[u8], using_n_lsb: usize) -> usize {
+fn bytes_needed_for_data(data: &[u8], using_n_lsb: usize) -> usize {
     (data.len() * 8) / using_n_lsb
 }
 
 #[cfg(test)]
 mod test {
+    fn ensure_out_dir() -> std::io::Result<()> {
+        std::fs::create_dir_all("tests/out")
+    }
+
     use crate::prelude::*;
-    use std::{fs::File, io::Read};
 
     #[test]
     fn target_byte_size_calc() {
-        assert_eq!(super::bytes_need_for_data(&[8, 1, 2, 3], 1), 32);
-        assert_eq!(super::bytes_need_for_data(&[8, 1, 2, 3], 2), 16);
+        assert_eq!(super::bytes_needed_for_data(&[8, 1, 2, 3], 1), 32);
+        assert_eq!(super::bytes_needed_for_data(&[8, 1, 2, 3], 2), 16);
     }
 
     #[test]
     fn simple_encoding() {
-        let mut file = File::open("tests/images/red_panda.jpg").expect("Test image not found");
-        let mut source_data: Vec<u8> = Vec::new();
-        file.read_to_end(&mut source_data)
-            .expect("Cannot test image");
+        ensure_out_dir().unwrap();
 
-        let encode_result = super::JpegEncoder::new()
+        let encode_result = super::JpegEncoder::from("tests/images/red_panda.jpg")
             .use_n_lsb(2)
-            .source_data(source_data)
             .encode_data(
                 b"
                 Midway upon the journey of our life
@@ -165,7 +265,7 @@ mod test {
 
         encode_result
             .unwrap()
-            .save("tests/out/steg.jpeg")
+            .save("tests/out/red_panda_steg.jpeg")
             .expect("Could not create output file");
     }
 }

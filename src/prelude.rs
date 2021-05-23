@@ -37,7 +37,7 @@ pub trait Encoder {
     fn offset(&mut self, offset: usize) -> &mut Self;
 
     /// When encoding data, `n` pixels will be skipped after each edited pixel
-    fn skip_n_pixels(&mut self, n: usize) -> &mut Self;
+    fn step_by_n_pixels(&mut self, n: usize) -> &mut Self;
 
     /// Specifies wich color channel will be the one used to store information bits.
     fn use_channel(&mut self, channel: RgbChannel) -> &mut Self;
