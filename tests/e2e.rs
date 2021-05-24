@@ -1,8 +1,8 @@
 use core::panic;
 use std::fs::File;
 
-use seagul::{decoder::ImageDecoder, prelude::*};
-use seagul::encoder::ImageEncoder;
+use seagul_core::{decoder::ImageDecoder, prelude::*};
+use seagul_core::encoder::ImageEncoder;
 
 fn ensure_out_dir() -> std::io::Result<()> {
     std::fs::create_dir_all("tests/out")

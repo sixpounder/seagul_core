@@ -51,21 +51,6 @@ impl EncodedImage {
         let mut output_file = File::create(path).unwrap();
 
         let res = match format {
-            // ImageFormat::Jpeg => {
-            //     let encoder = image::jpeg::JpegEncoder::new_with_quality(
-            //         &mut output_file,
-            //         100,
-            //     );
-            //     match image::ImageEncoder::write_image(
-            //         encoder,
-            //         bytes,
-            //         target_dimensions.0,
-            //         target_dimensions.1,
-            //         image::ColorType::Rgb8) {
-            //             Ok(_) => Ok(()),
-            //             Err(e) => Err(e.to_string()),
-            //     }
-            // }
             ImageFormat::Jpeg |
             ImageFormat::Png => {
                 match image::ImageEncoder::write_image(image::png::PngEncoder::new_with_quality(
@@ -221,9 +206,13 @@ impl ImageEncoder {
                             current_byte_map.affected_points.push(color_change);
                             current_byte_iter_count += self.lsb_c;
                         } else {
-                            return Err(String::from(
-                                "Not enough space in image to fit specified data",
-                            ));
+                            if !self.get_spread() {
+                                return Err(String::from(
+                                    "Not enough space in image to fit specified data",
+                                ));
+                            } else {
+                                break;
+                            }
                         }
                     }
                 }

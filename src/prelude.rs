@@ -14,7 +14,7 @@ impl Deref for Image {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum ImagePosition {
     TopLeft,
     TopRight,

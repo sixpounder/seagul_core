@@ -1,5 +1,5 @@
 [package]
-name = "seagul"
+name = "seagul_core"
 version = "0.1.0"
 authors = ["Andrea Coronese <sixpounder@protonmail.com>"]
 edition = "2018"
