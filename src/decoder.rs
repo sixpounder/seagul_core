@@ -1,16 +1,21 @@
-use std::{borrow::Cow, fs::File};
+use std::{borrow::Cow, fs::File, time::Duration};
 
 use bitvec::{order::Lsb0, view::BitView};
 use image::{DynamicImage, EncodableLayout};
 
-use crate::prelude::{ImageIntrinsics, RgbChannel};
+use crate::prelude::{Configurable, ImagePosition, RgbChannel};
 
 pub struct DecodedImage {
     data: Vec<u8>,
     hit_marker: bool,
+    elapsed: std::time::Duration
 }
 
 impl DecodedImage {
+    pub fn decode_time(&self) -> &Duration {
+        &self.elapsed
+    }
+
     pub fn as_raw(&self) -> Cow<str> {
         String::from_utf8_lossy(&self.data)
     }
@@ -18,14 +23,6 @@ impl DecodedImage {
     pub fn as_string(&self) -> String {
         String::from_utf8(self.data.clone()).unwrap()
     }
-
-    // pub fn as_image(&self) -> Result<Image, String> {
-    //     if let Ok(loaded) = image::load_from_memory(&self.data) {
-    //         Ok(Image::from(loaded))
-    //     } else {
-    //         Err(String::from("Cannot convert to image (invalid data?)"))
-    //     }
-    // }
 
     pub fn embedded_data(&self) -> &Vec<u8> {
         &self.data
@@ -44,6 +41,7 @@ pub struct ImageDecoder {
     encoding_channel: RgbChannel,
     offset: usize,
     spread: bool,
+    encoding_position: ImagePosition,
     marker: Option<&'static [u8]>,
     source_image: DynamicImage,
 }
@@ -84,6 +82,7 @@ impl Default for ImageDecoder {
             offset: 0,
             spread: false,
             marker: None,
+            encoding_position: ImagePosition::TopLeft,
             encoding_channel: RgbChannel::Blue,
             source_image: DynamicImage::new_rgb8(16, 16),
         }
@@ -102,7 +101,9 @@ impl ImageDecoder {
     }
 
     pub fn decode(&self) -> Result<DecodedImage, String> {
+        let start = std::time::Instant::now();
         let byte_step = std::mem::size_of::<u8>() * 8;
+        let decoding_channel = self.get_use_channel().into();
         let mut decoded: Vec<u8> = Vec::with_capacity(100);
         let mut hit_marker = false;
         let target_sequence = self.marker.unwrap_or(&[]);
@@ -118,7 +119,7 @@ impl ImageDecoder {
             .skip(self.offset)
             .step_by(self.skip_c)
         {
-            let pixel_lsb = pixel.2[self.encoding_channel.into()].view_bits::<Lsb0>();
+            let pixel_lsb = pixel.2[decoding_channel].view_bits::<Lsb0>();
 
             // take lsb_c from this pixel channel
             for i in 0..self.lsb_c {
@@ -149,35 +150,37 @@ impl ImageDecoder {
             }
         }
 
+        let end = std::time::Instant::now();
         Ok(DecodedImage {
             data: decoded,
             hit_marker,
+            elapsed: (end - start)
         })
     }
 }
 
-impl ImageIntrinsics for ImageDecoder {
+impl Configurable for ImageDecoder {
     /// Skip the first `offset` bytes in the source buffer
-    fn offset(&mut self, offset: usize) -> &mut Self {
+    fn set_offset(&mut self, offset: usize) -> &mut Self {
         self.offset = offset;
         self
     }
 
     /// Sets the number of least significative bits to read for each
     /// byte in the source buffer. The default is 1.
-    fn use_n_lsb(&mut self, n: usize) -> &mut Self {
+    fn set_use_n_lsb(&mut self, n: usize) -> &mut Self {
         self.lsb_c = n;
         self
     }
 
     /// Specifies wich color channel will be the one used to store information bits.
-    fn use_channel(&mut self, channel: RgbChannel) -> &mut Self {
+    fn set_use_channel(&mut self, channel: RgbChannel) -> &mut Self {
         self.encoding_channel = channel;
         self
     }
 
     /// When decoding data, `n` pixels will be skipped after each edited pixel
-    fn step_by_n_pixels(&mut self, n: usize) -> &mut Self {
+    fn set_step_by_n_pixels(&mut self, n: usize) -> &mut Self {
         if n < 1 {
             self.skip_c = 1;
         } else {
@@ -186,8 +189,37 @@ impl ImageIntrinsics for ImageDecoder {
         self
     }
 
-    fn spread(&mut self, value: bool) -> &mut Self {
+    fn set_spread(&mut self, value: bool) -> &mut Self {
         self.spread = value;
         self
+    }
+
+    fn set_position(&mut self, value: ImagePosition) -> &mut Self {
+        self.encoding_position = value;
+        self
+    }
+
+    fn get_use_n_lsb(&self) -> usize {
+        self.lsb_c
+    }
+
+    fn get_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn get_step_by_n_pixels(&self) -> usize {
+        self.skip_c
+    }
+
+    fn get_use_channel(&self) -> &RgbChannel {
+        &self.encoding_channel
+    }
+
+    fn get_spread(&self) -> bool {
+        self.spread
+    }
+
+    fn get_position(&self) -> &ImagePosition {
+        &self.encoding_position
     }
 }

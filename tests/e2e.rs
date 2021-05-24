@@ -26,8 +26,8 @@ So full was I of slumber at the moment
 In which I had abandoned the true way.--";
 
     let encode_result = ImageEncoder::from("tests/images/red_panda.jpg")
-        .offset(0)
-        .use_n_lsb(2)
+        .set_offset(0)
+        .set_use_n_lsb(2)
         .encode_bytes(verses);
 
     if let Err(e) = encode_result {
@@ -36,15 +36,15 @@ In which I had abandoned the true way.--";
 
     encode_result
         .unwrap()
-        .save("tests/out/red_panda_steg.png")
+        .save("tests/out/red_panda_steg.png", ImageFormat::Png)
         .expect("Could not create output file");
 
     let mut created_image =
         File::open("tests/out/red_panda_steg.png").expect("Failed to open created image");
 
     let decoded = ImageDecoder::from(&mut created_image)
-        .offset(0)
-        .use_n_lsb(2)
+        .set_offset(0)
+        .set_use_n_lsb(2)
         .until_marker(Some(b"--"))
         .decode();
 

@@ -14,6 +14,7 @@ impl Deref for Image {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum ImagePosition {
     TopLeft,
     TopRight,
@@ -45,11 +46,17 @@ impl<T: Primitive> Into<image::Rgb<T>> for Rgb<T> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum RgbChannel {
     Red,
     Green,
     Blue
+}
+
+impl AsRef<RgbChannel> for RgbChannel {
+    fn as_ref(&self) -> &RgbChannel {
+        &self
+    }
 }
 
 impl Into<u8> for RgbChannel {
@@ -72,22 +79,69 @@ impl Into<usize> for RgbChannel {
     }
 }
 
-/// Encoding options specify how to interpret a set of bytes in an image
-pub trait ImageIntrinsics {
+impl Into<usize> for &RgbChannel {
+    fn into(self) -> usize {
+        match self {
+            RgbChannel::Red => { 0 }
+            RgbChannel::Green => { 1 }
+            RgbChannel::Blue => { 2 }
+        }
+    }
+}
+
+/// Encoding and decoding options specify how to interpret a set of bytes in an image
+pub trait Configurable {
     /// Sets the number of least significative bits to edit for each
     /// byte in the source buffer. The higher the value gets
     /// the least space is required to encode data into the source, but the resulting
     /// image will get noticeably different from the original
-    fn use_n_lsb(&mut self, n: usize) -> &mut Self;
+    fn set_use_n_lsb(&mut self, n: usize) -> &mut Self;
 
     /// Skip the first `offset` bytes in the source buffer
-    fn offset(&mut self, offset: usize) -> &mut Self;
+    fn set_offset(&mut self, offset: usize) -> &mut Self;
 
     /// When encoding data, `n` pixels will be skipped after each edited pixel
-    fn step_by_n_pixels(&mut self, n: usize) -> &mut Self;
+    fn set_step_by_n_pixels(&mut self, n: usize) -> &mut Self;
 
     /// Specifies wich color channel will be the one used to store information bits.
-    fn use_channel(&mut self, channel: RgbChannel) -> &mut Self;
+    fn set_use_channel(&mut self, channel: RgbChannel) -> &mut Self;
 
-    fn spread(&mut self, value: bool) -> &mut Self;
+    /// If the message is spread across the image
+    fn set_spread(&mut self, value: bool) -> &mut Self;
+
+    /// Starting position for the encoding. Irrelevant if spread is true
+    fn set_position(&mut self, value: ImagePosition) -> &mut Self;
+
+    /// Sets the number of least significative bits to edit for each
+    /// byte in the source buffer. The higher the value gets
+    /// the least space is required to encode data into the source, but the resulting
+    /// image will get noticeably different from the original
+    fn get_use_n_lsb(&self) -> usize;
+
+    /// Skip the first `offset` bytes in the source buffer
+    fn get_offset(&self) -> usize;
+
+    /// When encoding data, `n` pixels will be skipped after each edited pixel
+    fn get_step_by_n_pixels(&self) -> usize;
+
+    /// Specifies wich color channel will be the one used to store information bits.
+    fn get_use_channel(&self) -> &RgbChannel;
+
+    /// If the message is spread across the image
+    fn get_spread(&self) -> bool;
+
+    /// Starting position for the encoding. Irrelevant if spread is true
+    fn get_position(&self) -> &ImagePosition;
+}
+
+pub enum ImageFormat {
+    Jpeg,
+    Png,
+    Bmp
+}
+
+impl From<image::ImageFormat> for ImageFormat {
+    fn from(f: image::ImageFormat) -> Self {
+        f.into()
+    }
 }

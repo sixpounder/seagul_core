@@ -3,7 +3,7 @@ use std::{fmt::Display, fs::File};
 use bitvec::prelude::*;
 use image::{DynamicImage, EncodableLayout, GenericImageView, Pixel};
 
-use crate::prelude::{ImageIntrinsics, Image, Rgb, RgbChannel};
+use crate::prelude::{Image, ImageFormat, Configurable, ImagePosition, Rgb, RgbChannel};
 
 #[derive(Debug)]
 pub struct ColorChange(u32, u32, Rgb<u8>, Rgb<u8>);
@@ -45,18 +45,50 @@ impl EncodedImage {
         &self.map
     }
 
-    pub fn save(&self, path: &str) -> Result<(), String> {
+    pub fn save(&self, path: &str, format: ImageFormat) -> Result<(), String> {
         let target_dimensions = self.altered_image.dimensions();
-        match image::save_buffer(
-            path,
-            self.altered_image.as_bytes(),
-            target_dimensions.0,
-            target_dimensions.1,
-            image::ColorType::Rgb8,
-        ) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.to_string()),
-        }
+        let bytes = self.altered_image.as_bytes();
+        let mut output_file = File::create(path).unwrap();
+
+        let res = match format {
+            // ImageFormat::Jpeg => {
+            //     let encoder = image::jpeg::JpegEncoder::new_with_quality(
+            //         &mut output_file,
+            //         100,
+            //     );
+            //     match image::ImageEncoder::write_image(
+            //         encoder,
+            //         bytes,
+            //         target_dimensions.0,
+            //         target_dimensions.1,
+            //         image::ColorType::Rgb8) {
+            //             Ok(_) => Ok(()),
+            //             Err(e) => Err(e.to_string()),
+            //     }
+            // }
+            ImageFormat::Jpeg |
+            ImageFormat::Png => {
+                match image::ImageEncoder::write_image(image::png::PngEncoder::new_with_quality(
+                    &mut output_file,
+                    image::png::CompressionType::Fast,
+                    image::png::FilterType::NoFilter,
+                ), bytes, target_dimensions.0, target_dimensions.1, image::ColorType::Rgb8) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+            ImageFormat::Bmp => {
+                // Box::new(image::bmp::BmpEncoder::new(&mut output_file))
+                match image::ImageEncoder::write_image(image::bmp::BmpEncoder::new(
+                    &mut output_file,
+                ), bytes, target_dimensions.0, target_dimensions.1, image::ColorType::Rgb8) {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(e.to_string()),
+                }
+            }
+        };
+
+        res
     }
 }
 
@@ -66,6 +98,7 @@ pub struct ImageEncoder {
     offset: usize,
     spread: bool,
     encoding_channel: RgbChannel,
+    encoding_position: ImagePosition,
     source_image: DynamicImage,
 }
 
@@ -77,6 +110,7 @@ impl Default for ImageEncoder {
             offset: 0,
             spread: false,
             encoding_channel: RgbChannel::Blue,
+            encoding_position: ImagePosition::TopLeft,
             source_image: DynamicImage::new_rgb8(16, 16),
         }
     }
@@ -125,12 +159,34 @@ impl ImageEncoder {
     fn encode_data<'a>(&self, data: &'a [u8]) -> Result<EncodedImage, String> {
         let img = &self.source_image;
         let mut encode_maps: Vec<EncodeMap> = vec![];
-
+        let encoding_channel = self.get_use_channel().into();
         if bytes_needed_for_data(data, self.lsb_c) <= img.as_bytes().len() {
             let mut rgb_img = img.to_rgb8();
+            let image_dimensions = rgb_img.dimensions();
+            let mut real_offset: usize = 0;
+            match self.encoding_position {
+                ImagePosition::TopLeft => (),
+                ImagePosition::TopRight => {
+                    real_offset = image_dimensions.0 as usize;
+                }
+                ImagePosition::BottomLeft => {
+                    real_offset = image_dimensions.1 as usize;
+                }
+                ImagePosition::BottomRight => {
+                    real_offset = image_dimensions.0 as usize + image_dimensions.1 as usize
+                }
+                ImagePosition::Center => {
+                    real_offset = (image_dimensions.0 as usize + image_dimensions.1 as usize) / 2
+                }
+                ImagePosition::At(w, h) => {
+                    real_offset = (w * h) as usize;
+                }
+            }
+
+            real_offset += self.offset;
             let mut pixel_iter = rgb_img
                 .enumerate_pixels_mut()
-                .skip(self.offset)
+                .skip(real_offset)
                 .step_by(self.skip_c);
             for byte_to_encode in data.iter() {
                 let mut current_byte_iter_count = 0;
@@ -154,7 +210,7 @@ impl ImageEncoder {
                             let bits_to_modify = pixel_to_modify
                                 .2
                                 .channels_mut()
-                                .get_mut::<usize>(self.encoding_channel.into())
+                                .get_mut::<usize>(encoding_channel)
                                 .unwrap()
                                 .view_bits_mut::<Lsb0>();
                             for i in 0..self.lsb_c {
@@ -188,9 +244,9 @@ impl ImageEncoder {
     }
 }
 
-impl ImageIntrinsics for ImageEncoder {
+impl Configurable for ImageEncoder {
     /// Skip the first `offset` bytes in the source buffer
-    fn offset(&mut self, offset: usize) -> &mut Self {
+    fn set_offset(&mut self, offset: usize) -> &mut Self {
         self.offset = offset;
         self
     }
@@ -199,19 +255,19 @@ impl ImageIntrinsics for ImageEncoder {
     /// byte in the source buffer. The default is 1. The higher the value gets
     /// the least space is required to encode data into the source, but the resulting
     /// image will get noticeably different from the original
-    fn use_n_lsb(&mut self, n: usize) -> &mut Self {
+    fn set_use_n_lsb(&mut self, n: usize) -> &mut Self {
         self.lsb_c = n;
         self
     }
 
     /// Specifies wich color channel will be the one used to store information bits.
-    fn use_channel(&mut self, channel: RgbChannel) -> &mut Self {
+    fn set_use_channel(&mut self, channel: RgbChannel) -> &mut Self {
         self.encoding_channel = channel;
         self
     }
 
     /// When encoding data, `n` pixels will be skipped after each edited pixel
-    fn step_by_n_pixels(&mut self, n: usize) -> &mut Self {
+    fn set_step_by_n_pixels(&mut self, n: usize) -> &mut Self {
         if n < 1 {
             self.skip_c = 1;
         } else {
@@ -220,9 +276,38 @@ impl ImageIntrinsics for ImageEncoder {
         self
     }
 
-    fn spread(&mut self, value: bool) -> &mut Self {
+    fn set_spread(&mut self, value: bool) -> &mut Self {
         self.spread = value;
         self
+    }
+
+    fn set_position(&mut self, value: ImagePosition) -> &mut Self {
+        self.encoding_position = value;
+        self
+    }
+
+    fn get_use_n_lsb(&self) -> usize {
+        self.lsb_c
+    }
+
+    fn get_offset(&self) -> usize {
+        self.offset
+    }
+
+    fn get_step_by_n_pixels(&self) -> usize {
+        self.skip_c
+    }
+
+    fn get_use_channel(&self) -> &RgbChannel {
+        &self.encoding_channel
+    }
+
+    fn get_spread(&self) -> bool {
+        self.spread
+    }
+
+    fn get_position(&self) -> &ImagePosition {
+        &self.encoding_position
     }
 }
 
@@ -231,10 +316,7 @@ fn bytes_needed_for_data(data: &[u8], using_n_lsb: usize) -> usize {
 }
 
 fn byte_to_bits(byte: &u8) -> Option<&BitSlice<Lsb0, u8>> {
-    let raw_bits = bitvec::ptr::bitslice_from_raw_parts::<Lsb0, u8>(
-        BitPtr::from_ref(byte),
-        8,
-    );
+    let raw_bits = bitvec::ptr::bitslice_from_raw_parts::<Lsb0, u8>(BitPtr::from_ref(byte), 8);
     let bits;
     unsafe {
         bits = raw_bits.as_ref();
@@ -275,7 +357,7 @@ mod test {
         ensure_out_dir().unwrap();
 
         let encode_result = super::ImageEncoder::from("tests/images/red_panda.jpg")
-            .use_n_lsb(2)
+            .set_use_n_lsb(2)
             .encode_data(
                 b"
                 Midway upon the journey of our life
@@ -296,7 +378,7 @@ mod test {
 
         encode_result
             .unwrap()
-            .save("tests/out/red_panda_steg.jpeg")
+            .save("tests/out/red_panda_steg.jpeg", ImageFormat::Jpeg)
             .expect("Could not create output file");
     }
 }
