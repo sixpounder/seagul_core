@@ -57,7 +57,7 @@ impl EncodedImage {
         let target_dimensions = self.altered_image.dimensions();
         let bytes = self.altered_image.as_bytes();
 
-        let res = match format {
+        match format {
             ImageFormat::Jpeg | ImageFormat::Png => {
                 match image::ImageEncoder::write_image(
                     image::png::PngEncoder::new_with_quality(
@@ -87,9 +87,7 @@ impl EncodedImage {
                     Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Interrupted, e)),
                 }
             }
-        };
-
-        res
+        }
     }
 }
 
@@ -141,10 +139,6 @@ impl<R: std::io::Read + ?Sized> From<&mut R> for ImageEncoder {
 }
 
 impl ImageEncoder {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn encode_string(&self, data: String) -> Result<EncodedImage, String> {
         self.encode_data(data.as_bytes())
     }
@@ -363,6 +357,7 @@ mod test {
 
         let encode_result = super::ImageEncoder::from("tests/images/red_panda.jpg")
             .set_use_n_lsb(2)
+            .set_use_channel(RgbChannel::Blue)
             .encode_data(
                 b"
                 Midway upon the journey of our life
