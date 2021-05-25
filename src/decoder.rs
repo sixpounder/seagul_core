@@ -75,12 +75,6 @@ impl<'a, R: std::io::Read + ?Sized> From<&mut R> for ImageDecoder<'a> {
     }
 }
 
-// impl From<&mut File> for ImageDecoder {
-//     fn from(source_file: &mut File) -> Self {
-//         Self::from(source_file as &mut dyn std::io::Read)
-//     }
-// }
-
 impl<'a> Default for ImageDecoder<'a> {
     fn default() -> Self {
         Self {
