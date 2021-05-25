@@ -33,6 +33,13 @@ impl DecodedImage {
     pub fn hit_marker(&self) -> bool {
         self.hit_marker
     }
+
+    pub fn write<W>(&self, w: &mut W) -> Result<(), std::io::Error>
+    where
+        W: std::io::Write,
+    {
+        w.write_all(self.data.as_bytes())
+    }
 }
 
 pub struct ImageDecoder {
@@ -53,8 +60,8 @@ impl From<&str> for ImageDecoder {
     }
 }
 
-impl From<&mut dyn std::io::Read> for ImageDecoder {
-    fn from(readable: &mut dyn std::io::Read) -> Self {
+impl<R: std::io::Read + ?Sized> From<&mut R> for ImageDecoder {
+    fn from(readable: &mut R) -> Self {
         let mut source_data: Vec<u8> = Vec::new();
         readable
             .read_to_end(&mut source_data)
@@ -68,11 +75,11 @@ impl From<&mut dyn std::io::Read> for ImageDecoder {
     }
 }
 
-impl From<&mut File> for ImageDecoder {
-    fn from(source_file: &mut File) -> Self {
-        Self::from(source_file as &mut dyn std::io::Read)
-    }
-}
+// impl From<&mut File> for ImageDecoder {
+//     fn from(source_file: &mut File) -> Self {
+//         Self::from(source_file as &mut dyn std::io::Read)
+//     }
+// }
 
 impl Default for ImageDecoder {
     fn default() -> Self {

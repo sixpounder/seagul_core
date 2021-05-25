@@ -3,7 +3,7 @@ use std::{fmt::Display, fs::File};
 use bitvec::prelude::*;
 use image::{DynamicImage, EncodableLayout, GenericImageView, Pixel};
 
-use crate::prelude::{Image, ImageFormat, Configurable, ImagePosition, Rgb, RgbChannel};
+use crate::prelude::{Configurable, Image, ImageFormat, ImagePosition, Rgb, RgbChannel};
 
 #[derive(Debug)]
 pub struct ColorChange(u32, u32, Rgb<u8>, Rgb<u8>);
@@ -45,30 +45,46 @@ impl EncodedImage {
         &self.map
     }
 
-    pub fn save(&self, path: &str, format: ImageFormat) -> Result<(), String> {
+    pub fn save(&self, path: &str, format: ImageFormat) -> Result<(), std::io::Error> {
+        let mut output_file = File::create(path).unwrap();
+        self.write(&mut output_file, format)
+    }
+
+    pub fn write<W>(&self, w: &mut W, format: ImageFormat) -> Result<(), std::io::Error>
+    where
+        W: std::io::Write,
+    {
         let target_dimensions = self.altered_image.dimensions();
         let bytes = self.altered_image.as_bytes();
-        let mut output_file = File::create(path).unwrap();
 
         let res = match format {
-            ImageFormat::Jpeg |
-            ImageFormat::Png => {
-                match image::ImageEncoder::write_image(image::png::PngEncoder::new_with_quality(
-                    &mut output_file,
-                    image::png::CompressionType::Fast,
-                    image::png::FilterType::NoFilter,
-                ), bytes, target_dimensions.0, target_dimensions.1, image::ColorType::Rgb8) {
+            ImageFormat::Jpeg | ImageFormat::Png => {
+                match image::ImageEncoder::write_image(
+                    image::png::PngEncoder::new_with_quality(
+                        w,
+                        image::png::CompressionType::Fast,
+                        image::png::FilterType::NoFilter,
+                    ),
+                    bytes,
+                    target_dimensions.0,
+                    target_dimensions.1,
+                    image::ColorType::Rgb8,
+                ) {
                     Ok(_) => Ok(()),
-                    Err(e) => Err(e.to_string()),
+                    Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Interrupted, e)),
                 }
             }
             ImageFormat::Bmp => {
                 // Box::new(image::bmp::BmpEncoder::new(&mut output_file))
-                match image::ImageEncoder::write_image(image::bmp::BmpEncoder::new(
-                    &mut output_file,
-                ), bytes, target_dimensions.0, target_dimensions.1, image::ColorType::Rgb8) {
+                match image::ImageEncoder::write_image(
+                    image::bmp::BmpEncoder::new(w),
+                    bytes,
+                    target_dimensions.0,
+                    target_dimensions.1,
+                    image::ColorType::Rgb8,
+                ) {
                     Ok(_) => Ok(()),
-                    Err(e) => Err(e.to_string()),
+                    Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Interrupted, e)),
                 }
             }
         };
@@ -108,8 +124,8 @@ impl From<&str> for ImageEncoder {
     }
 }
 
-impl From<&mut dyn std::io::Read> for ImageEncoder {
-    fn from(readable: &mut dyn std::io::Read) -> Self {
+impl<R: std::io::Read + ?Sized> From<&mut R> for ImageEncoder {
+    fn from(readable: &mut R) -> Self {
         let mut source_data: Vec<u8> = Vec::new();
         readable
             .read_to_end(&mut source_data)
@@ -117,10 +133,10 @@ impl From<&mut dyn std::io::Read> for ImageEncoder {
 
         let img = image::load_from_memory(source_data.as_bytes()).unwrap();
 
-        let mut this = Self::default();
-        this.source_image = img;
+        let mut encoder = Self::default();
+        encoder.source_image = img;
 
-        this
+        encoder
     }
 }
 
