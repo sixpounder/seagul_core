@@ -42,25 +42,25 @@ impl DecodedImage {
     }
 }
 
-pub struct ImageDecoder {
+pub struct ImageDecoder<'a> {
     lsb_c: usize,
     skip_c: usize,
     encoding_channel: RgbChannel,
     offset: usize,
     spread: bool,
     encoding_position: ImagePosition,
-    marker: Option<&'static [u8]>,
+    marker: Option<&'a [u8]>,
     source_image: DynamicImage,
 }
 
-impl From<&str> for ImageDecoder {
+impl<'a> From<&str> for ImageDecoder<'a> {
     fn from(path: &str) -> Self {
         let mut file = File::open(path).expect("Test image not found");
         Self::from(&mut file as &mut dyn std::io::Read)
     }
 }
 
-impl<R: std::io::Read + ?Sized> From<&mut R> for ImageDecoder {
+impl<'a, R: std::io::Read + ?Sized> From<&mut R> for ImageDecoder<'a> {
     fn from(readable: &mut R) -> Self {
         let mut source_data: Vec<u8> = Vec::new();
         readable
@@ -81,7 +81,7 @@ impl<R: std::io::Read + ?Sized> From<&mut R> for ImageDecoder {
 //     }
 // }
 
-impl Default for ImageDecoder {
+impl<'a> Default for ImageDecoder<'a> {
     fn default() -> Self {
         Self {
             lsb_c: 1,
@@ -96,13 +96,13 @@ impl Default for ImageDecoder {
     }
 }
 
-impl ImageDecoder {
+impl<'a> ImageDecoder<'a> {
     pub fn new() -> Self {
         Self::default()
     }
 
     /// Specifies a byte sequence to look for and stop deconding when found.
-    pub fn until_marker(&mut self, marker_sequence: Option<&'static [u8]>) -> &mut Self {
+    pub fn until_marker(&mut self, marker_sequence: Option<&'a [u8]>) -> &mut Self {
         self.marker = marker_sequence;
         self
     }
@@ -166,7 +166,7 @@ impl ImageDecoder {
     }
 }
 
-impl Configurable for ImageDecoder {
+impl<'a> Configurable for ImageDecoder<'_> {
     /// Skip the first `offset` bytes in the source buffer
     fn set_offset(&mut self, offset: usize) -> &mut Self {
         self.offset = offset;
