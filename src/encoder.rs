@@ -3,7 +3,7 @@ use std::{fmt::Display, fs::File};
 use bitvec::prelude::*;
 use image::{DynamicImage, EncodableLayout, GenericImageView, Pixel};
 
-use crate::prelude::{Configurable, Image, ImageFormat, ImagePosition, Rgb, RgbChannel};
+use crate::prelude::{ImageRules, Image, ImageFormat, ImagePosition, Rgb, RgbChannel};
 
 #[derive(Debug)]
 pub struct ColorChange(u32, u32, Rgb<u8>, Rgb<u8>);
@@ -247,7 +247,7 @@ impl ImageEncoder {
     }
 }
 
-impl Configurable for ImageEncoder {
+impl ImageRules for ImageEncoder {
     /// Skip the first `offset` bytes in the source buffer
     fn set_offset(&mut self, offset: usize) -> &mut Self {
         self.offset = offset;

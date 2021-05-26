@@ -59,6 +59,17 @@ impl AsRef<RgbChannel> for RgbChannel {
     }
 }
 
+impl From<&str> for RgbChannel {
+    fn from(repr: &str) -> Self {
+        match repr {
+            "red" | "r" => RgbChannel::Red,
+            "green" | "g" => RgbChannel::Green,
+            "blue" | "b" => RgbChannel::Blue,
+            _ => RgbChannel::Blue
+        }
+    }
+}
+
 impl Into<u8> for RgbChannel {
     fn into(self) -> u8 {
         match self {
@@ -90,7 +101,7 @@ impl Into<usize> for &RgbChannel {
 }
 
 /// Encoding and decoding options specify how to interpret a set of bytes in an image
-pub trait Configurable {
+pub trait ImageRules {
     /// Sets the number of least significative bits to edit for each
     /// byte in the source buffer. The higher the value gets
     /// the least space is required to encode data into the source, but the resulting

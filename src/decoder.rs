@@ -3,7 +3,7 @@ use std::{borrow::Cow, fs::File, time::Duration};
 use bitvec::{order::Lsb0, view::BitView};
 use image::{DynamicImage, EncodableLayout};
 
-use crate::prelude::{Configurable, ImagePosition, RgbChannel};
+use crate::prelude::{ImageRules, ImagePosition, RgbChannel};
 
 pub struct DecodedImage {
     data: Vec<u8>,
@@ -59,6 +59,22 @@ impl<'a> From<&str> for ImageDecoder<'a> {
         Self::from(&mut file as &mut dyn std::io::Read)
     }
 }
+
+// impl<'a, R: std::io::Read> From<&mut Box<R>> for ImageDecoder<'a> {
+//     fn from(readable: &mut Box<R>) -> Self {
+//         let mut source_data: Vec<u8> = Vec::new();
+//         readable
+//             .as_mut()
+//             .read_to_end(&mut source_data)
+//             .expect("Cannot load image from this path");
+
+//         let img = image::load_from_memory(source_data.as_bytes()).unwrap();
+
+//         let mut this = Self::default();
+//         this.source_image = img;
+//         this
+//     }
+// }
 
 impl<'a, R: std::io::Read + ?Sized> From<&mut R> for ImageDecoder<'a> {
     fn from(readable: &mut R) -> Self {
@@ -160,7 +176,7 @@ impl<'a> ImageDecoder<'a> {
     }
 }
 
-impl<'a> Configurable for ImageDecoder<'_> {
+impl<'a> ImageRules for ImageDecoder<'_> {
     /// Skip the first `offset` bytes in the source buffer
     fn set_offset(&mut self, offset: usize) -> &mut Self {
         self.offset = offset;
