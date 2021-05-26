@@ -45,6 +45,10 @@ impl EncodedImage {
         &self.map
     }
 
+    pub fn pixels_changed(&self) -> usize {
+        *&self.map.iter().fold(0, |acc, item| acc + item.affected_points.len())
+    }
+
     pub fn save(&self, path: &str, format: ImageFormat) -> Result<(), std::io::Error> {
         let mut output_file = File::create(path).unwrap();
         self.write(&mut output_file, format)
