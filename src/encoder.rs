@@ -3,8 +3,9 @@ use std::{fmt::Display, fs::File};
 use bitvec::prelude::*;
 use image::{DynamicImage, EncodableLayout, GenericImageView, Pixel};
 
-use crate::prelude::{ImageRules, Image, ImageFormat, ImagePosition, Rgb, RgbChannel};
+use crate::prelude::{ImageRules, ImageFormat, ImagePosition, Rgb, RgbChannel};
 
+/// Describes a color change to a set of coordinates (0, 1) from (2) to (3)
 #[derive(Debug)]
 pub struct ColorChange(u32, u32, Rgb<u8>, Rgb<u8>);
 
@@ -14,6 +15,7 @@ impl Display for ColorChange {
     }
 }
 
+/// Describes how a single byte is encoded
 #[derive(Debug)]
 pub struct EncodeMap {
     pub encoded_byte: u8,
@@ -33,6 +35,7 @@ impl EncodeMap {
     }
 }
 
+/// Represents the result of an image encoded with `ImageEncoder` and offers saving methods
 #[derive(Debug)]
 pub struct EncodedImage {
     altered_image: image::DynamicImage,
@@ -46,14 +49,17 @@ impl EncodedImage {
     }
 
     pub fn pixels_changed(&self) -> usize {
-        *&self.map.iter().fold(0, |acc, item| acc + item.affected_points.len())
+        *&self.map.iter().fold(0, |acc, item| acc + item.len())
     }
 
+    /// Writes decoded bytes into a new file at `path`, with the specified image format.
+    /// If the file exists it is overwritten.
     pub fn save(&self, path: &str, format: ImageFormat) -> Result<(), std::io::Error> {
         let mut output_file = File::create(path).unwrap();
         self.write(&mut output_file, format)
     }
 
+    /// Writes decoded bytes into an arbitraty `std::io::Write`, with the specified image format
     pub fn write<W>(&self, w: &mut W, format: ImageFormat) -> Result<(), std::io::Error>
     where
         W: std::io::Write,
@@ -95,6 +101,7 @@ impl EncodedImage {
     }
 }
 
+/// An image decoder takes an image and alters its pixels to encode arbitrary data
 pub struct ImageEncoder {
     lsb_c: usize,
     skip_c: usize,
@@ -143,17 +150,20 @@ impl<R: std::io::Read + ?Sized> From<&mut R> for ImageEncoder {
 }
 
 impl ImageEncoder {
+
+    /// Encodes a string into the source image for this decoder
     pub fn encode_string(&self, data: String) -> Result<EncodedImage, String> {
         self.encode_data(data.as_bytes())
     }
 
+    /// Encodes arbitrary bytes into the source image for this decoder
     pub fn encode_bytes<'a>(&self, data: &'a [u8]) -> Result<EncodedImage, String> {
         self.encode_data(data.as_bytes())
     }
 
-    pub fn encode_image(&self, image: &Image) -> Result<EncodedImage, String> {
-        self.encode_data(image.to_rgb8().as_bytes())
-    }
+    // pub fn encode_image(&self, image: &Image) -> Result<EncodedImage, String> {
+    //     self.encode_data(image.to_rgb8().as_bytes())
+    // }
 
     fn encode_data<'a>(&self, data: &'a [u8]) -> Result<EncodedImage, String> {
         let img = &self.source_image;
