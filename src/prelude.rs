@@ -132,7 +132,9 @@ pub trait ImageRules {
     /// Skip the first `offset` bytes in the source buffer
     fn get_offset(&self) -> usize;
 
-    /// When encoding data, `n` pixels will be skipped after each edited pixel
+    /// When encoding data, one pixdel each `n` pixels will be used to encode.
+    ///
+    /// For example: using `1` means skipping no pixels
     fn get_step_by_n_pixels(&self) -> usize;
 
     /// Specifies wich color channel will be the one used to store information bits.

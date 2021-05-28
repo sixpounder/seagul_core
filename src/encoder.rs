@@ -3,7 +3,7 @@ use std::{fmt::Display, fs::File};
 use bitvec::prelude::*;
 use image::{DynamicImage, EncodableLayout, GenericImageView, Pixel};
 
-use crate::prelude::{ImageRules, Image, ImageFormat, ImagePosition, Rgb, RgbChannel};
+use crate::prelude::{Image, ImageFormat, ImagePosition, ImageRules, Rgb, RgbChannel};
 
 #[derive(Debug)]
 pub struct ColorChange(u32, u32, Rgb<u8>, Rgb<u8>);
@@ -46,7 +46,10 @@ impl EncodedImage {
     }
 
     pub fn pixels_changed(&self) -> usize {
-        *&self.map.iter().fold(0, |acc, item| acc + item.affected_points.len())
+        *&self
+            .map
+            .iter()
+            .fold(0, |acc, item| acc + item.affected_points.len())
     }
 
     pub fn save(&self, path: &str, format: ImageFormat) -> Result<(), std::io::Error> {
@@ -159,7 +162,7 @@ impl ImageEncoder {
         let img = &self.source_image;
         let mut encode_maps: Vec<EncodeMap> = vec![];
         let encoding_channel = self.get_use_channel().into();
-        if bytes_needed_for_data(data, self.lsb_c) <= img.as_bytes().len() {
+        if bytes_needed_for_data(data, self) <= img.as_bytes().len() {
             let mut rgb_img = img.to_rgb8();
             let image_dimensions = rgb_img.dimensions();
             let mut real_offset: usize = 0;
@@ -314,8 +317,12 @@ impl ImageRules for ImageEncoder {
     }
 }
 
-fn bytes_needed_for_data(data: &[u8], using_n_lsb: usize) -> usize {
-    (data.len() * 8) / using_n_lsb
+fn bytes_needed_for_data<R>(data: &[u8], rules: &R) -> usize
+where
+    R: ImageRules,
+{
+    (((data.len() * 8) - (rules.get_offset() * 3 * 8)) * rules.get_step_by_n_pixels()) / rules.get_use_n_lsb()
+    // total data bits   skipped pixels size in bits     iterator step size               bits used per pixel
 }
 
 fn byte_to_bits(byte: &u8) -> Option<&BitSlice<Lsb0, u8>> {
@@ -347,12 +354,16 @@ mod test {
         std::fs::create_dir_all("tests/out")
     }
 
-    use crate::prelude::*;
+    use crate::{encoder::ImageEncoder, prelude::*};
 
     #[test]
     fn target_byte_size_calc() {
-        assert_eq!(super::bytes_needed_for_data(&[8, 1, 2, 3], 1), 32);
-        assert_eq!(super::bytes_needed_for_data(&[8, 1, 2, 3], 2), 16);
+        let mut encoder = ImageEncoder::default();
+        assert_eq!(super::bytes_needed_for_data(&[8, 1, 2, 3], &encoder), 32);
+        encoder.set_use_n_lsb(2);
+        assert_eq!(super::bytes_needed_for_data(&[8, 1, 2, 3], &encoder), 16);
+        encoder.set_step_by_n_pixels(2);
+        assert_eq!(super::bytes_needed_for_data(&[8, 1, 2, 3], &encoder), 32);
     }
 
     #[test]
