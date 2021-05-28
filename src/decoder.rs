@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fs::File, time::Duration};
+use std::{borrow::Cow, fs::File, string::FromUtf8Error, time::Duration};
 
 use bitvec::{order::Lsb0, view::BitView};
 use image::{DynamicImage, EncodableLayout};
@@ -12,28 +12,33 @@ pub struct DecodedImage {
 }
 
 impl DecodedImage {
+    /// The time it took to decode the image
     pub fn decode_time(&self) -> &Duration {
         &self.elapsed
     }
 
+    /// Decoded data as a raw string
     pub fn as_raw(&self) -> Cow<str> {
         String::from_utf8_lossy(&self.data)
     }
 
-    pub fn as_string(&self) -> String {
-        String::from_utf8(self.data.clone()).unwrap()
+    /// Tries to view the decoded data as valid Utf8
+    pub fn as_string(&self) -> Result<String, FromUtf8Error> {
+        String::from_utf8(self.data.clone())
     }
 
+    /// Gets a reference to the decoded byte array
     pub fn embedded_data(&self) -> &Vec<u8> {
         &self.data
     }
 
     /// If this is true, decoding stopped by hitting a marker specified in the
-    /// `JpegDecoder` configuration
+    /// `ImageDecoder` configuration
     pub fn hit_marker(&self) -> bool {
         self.hit_marker
     }
 
+    /// Writes decoded bytes to a target `std::io::Write`
     pub fn write<W>(&self, w: &mut W) -> Result<(), std::io::Error>
     where
         W: std::io::Write,
@@ -42,6 +47,9 @@ impl DecodedImage {
     }
 }
 
+/// An image decoder tries to find data encoded into an image's pixels. Supports the same
+/// configuration options as the `ImageEncoder`
+#[derive(Debug)]
 pub struct ImageDecoder<'a> {
     lsb_c: usize,
     skip_c: usize,
@@ -55,26 +63,10 @@ pub struct ImageDecoder<'a> {
 
 impl<'a> From<&str> for ImageDecoder<'a> {
     fn from(path: &str) -> Self {
-        let mut file = File::open(path).expect("Test image not found");
+        let mut file = File::open(path).expect("Image not found");
         Self::from(&mut file as &mut dyn std::io::Read)
     }
 }
-
-// impl<'a, R: std::io::Read> From<&mut Box<R>> for ImageDecoder<'a> {
-//     fn from(readable: &mut Box<R>) -> Self {
-//         let mut source_data: Vec<u8> = Vec::new();
-//         readable
-//             .as_mut()
-//             .read_to_end(&mut source_data)
-//             .expect("Cannot load image from this path");
-
-//         let img = image::load_from_memory(source_data.as_bytes()).unwrap();
-
-//         let mut this = Self::default();
-//         this.source_image = img;
-//         this
-//     }
-// }
 
 impl<'a, R: std::io::Read + ?Sized> From<&mut R> for ImageDecoder<'a> {
     fn from(readable: &mut R) -> Self {
@@ -138,7 +130,7 @@ impl<'a> ImageDecoder<'a> {
         {
             let pixel_lsb = pixel.2[decoding_channel].view_bits::<Lsb0>();
 
-            // take lsb_c from this pixel channel
+            // take lsb_c from this pixel target channel
             for i in 0..self.lsb_c {
                 current_byte_as_bits.set(iter_count, pixel_lsb[i]);
                 iter_count += 1;
@@ -196,8 +188,10 @@ impl<'a> ImageRules for ImageDecoder<'_> {
         self
     }
 
-    /// When decoding data, `n` pixels will be skipped after each edited pixel
+    /// When decoding data, `n` pixels will be skipped after each edited pixel.
+    /// If `n < 1` is passed, it defaults to `1`.
     fn set_step_by_n_pixels(&mut self, n: usize) -> &mut Self {
+        // Not using `clamp` because we don't want to panic
         if n < 1 {
             self.skip_c = 1;
         } else {

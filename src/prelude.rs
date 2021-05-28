@@ -24,6 +24,7 @@ pub enum ImagePosition {
     At(u32, u32)
 }
 
+/// Describes an RGB color
 #[derive(Debug)]
 pub struct Rgb<T>(T, T, T);
 
@@ -46,7 +47,8 @@ impl<T: Primitive> Into<image::Rgb<T>> for Rgb<T> {
     }
 }
 
-#[derive(Clone)]
+/// Represents a color channel in a pixel
+#[derive(Debug, Clone)]
 pub enum RgbChannel {
     Red,
     Green,
@@ -147,6 +149,7 @@ pub trait ImageRules {
     fn get_position(&self) -> &ImagePosition;
 }
 
+/// Enumerates supported image formats
 pub enum ImageFormat {
     Jpeg,
     Png,
