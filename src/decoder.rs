@@ -5,6 +5,8 @@ use image::{DynamicImage, EncodableLayout};
 
 use crate::prelude::{ImageRules, ImagePosition, RgbChannel};
 
+const BYTE_STEP: usize = std::mem::size_of::<u8>() * 8;
+
 pub struct DecodedImage {
     data: Vec<u8>,
     hit_marker: bool,
@@ -111,7 +113,6 @@ impl<'a> ImageDecoder<'a> {
 
     pub fn decode(&self) -> Result<DecodedImage, String> {
         let start = std::time::Instant::now();
-        let byte_step = std::mem::size_of::<u8>() * 8;
         let decoding_channel = self.get_use_channel().into();
         let mut decoded: Vec<u8> = Vec::with_capacity(100);
         let mut hit_marker = false;
@@ -137,7 +138,7 @@ impl<'a> ImageDecoder<'a> {
             }
 
             // Check if a single output byte is completed
-            if iter_count == byte_step {
+            if iter_count == BYTE_STEP {
                 decoded.push(current_byte);
                 if target_sequence_len != 0 {
                     sequence_hint.push(current_byte);
