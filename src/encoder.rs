@@ -169,7 +169,8 @@ impl ImageEncoder {
         let img = &self.source_image;
         let mut encode_maps: Vec<EncodeMap> = vec![];
         let encoding_channel = self.get_use_channel().into();
-        if bytes_needed_for_data(data, self) <= img.as_bytes().len() {
+        let bytes_per_round = bytes_needed_for_data(data, self);
+        if bytes_per_round <= img.as_bytes().len() {
             let mut rgb_img = img.to_rgb8();
             let image_dimensions = rgb_img.dimensions();
             let mut real_offset: usize = 0;
@@ -193,55 +194,67 @@ impl ImageEncoder {
             }
 
             real_offset += self.offset;
+
             let mut pixel_iter = rgb_img
                 .enumerate_pixels_mut()
                 .skip(real_offset)
                 .step_by(self.skip_c);
-            for byte_to_encode in data.iter() {
-                let mut current_byte_iter_count = 0;
-                let mut current_byte_map = EncodeMap::new();
-                current_byte_map.encoded_byte = byte_to_encode.clone();
 
-                let bits_to_encode = byte_to_bits(byte_to_encode);
+            let mut pixel_iter_counter = img.pixels().count();
 
-                if let Some(bits_ptr) = bits_to_encode {
-                    // eprintln!("Encoding byte (lsb): {}", bits_ptr);
-                    while current_byte_iter_count < std::mem::size_of::<u8>() * 8 {
-                        let bits_to_encode_slice: &BitSlice<Lsb0, u8> = &bits_ptr
-                            [current_byte_iter_count..current_byte_iter_count + self.lsb_c];
-                        if let Some(pixel_to_modify) = pixel_iter.next() {
-                            let mut color_change = ColorChange(
-                                pixel_to_modify.0,
-                                pixel_to_modify.1,
-                                pixel_to_modify.2.clone().into(),
-                                Rgb::from([0, 0, 0]),
-                            );
-                            let bits_to_modify = pixel_to_modify
-                                .2
-                                .channels_mut()
-                                .get_mut::<usize>(encoding_channel)
-                                .unwrap()
-                                .view_bits_mut::<Lsb0>();
-                            for i in 0..self.lsb_c {
-                                bits_to_modify.set(i, bits_to_encode_slice[i]);
-                            }
-
-                            color_change.3 = pixel_to_modify.2.clone().into();
-                            current_byte_map.affected_points.push(color_change);
-                            current_byte_iter_count += self.lsb_c;
-                        } else {
-                            if !self.get_spread() {
-                                return Err(String::from(
-                                    "Not enough space in image to fit specified data",
-                                ));
+            'encode_rounds: loop {
+                let data_iterator = data.iter();
+                'data_iter: for byte_to_encode in data_iterator {
+                    let mut current_byte_iter_count = 0;
+                    let mut current_byte_map = EncodeMap::new();
+                    current_byte_map.encoded_byte = byte_to_encode.clone();
+    
+                    let bits_to_encode = byte_to_bits(byte_to_encode);
+    
+                    if let Some(bits_ptr) = bits_to_encode {
+                        // eprintln!("Encoding byte (lsb): {}", bits_ptr);
+                        while current_byte_iter_count < std::mem::size_of::<u8>() * 8 {
+                            let bits_to_encode_slice: &BitSlice<Lsb0, u8> = &bits_ptr
+                                [current_byte_iter_count..current_byte_iter_count + self.lsb_c];
+                            if let Some(pixel_to_modify) = pixel_iter.next() {
+                                pixel_iter_counter = pixel_iter_counter - 1;
+                                let mut color_change = ColorChange(
+                                    pixel_to_modify.0,
+                                    pixel_to_modify.1,
+                                    pixel_to_modify.2.clone().into(),
+                                    Rgb::from([0, 0, 0]),
+                                );
+                                let bits_to_modify = pixel_to_modify
+                                    .2
+                                    .channels_mut()
+                                    .get_mut::<usize>(encoding_channel)
+                                    .unwrap()
+                                    .view_bits_mut::<Lsb0>();
+                                for i in 0..self.lsb_c {
+                                    bits_to_modify.set(i, bits_to_encode_slice[i]);
+                                }
+    
+                                color_change.3 = pixel_to_modify.2.clone().into();
+                                current_byte_map.affected_points.push(color_change);
+                                current_byte_iter_count += self.lsb_c;
                             } else {
-                                break;
+                                break 'data_iter;
                             }
                         }
                     }
+    
+                    encode_maps.push(current_byte_map);
                 }
 
-                encode_maps.push(current_byte_map);
+                if self.spread {
+                    if pixel_iter_counter == 0 {
+                        break 'encode_rounds;
+                    } else {
+                        continue;
+                    }
+                } else {
+                    break 'encode_rounds;
+                }
             }
 
             Ok(EncodedImage {
