@@ -3,6 +3,11 @@ name = "seagul_core"
 version = "0.1.0"
 authors = ["Andrea Coronese <sixpounder@protonmail.com>"]
 edition = "2018"
+description = "A library to encode (and decode) arbitrary information into images"
+readme = "README.md"
+homepage = "https://github.com/sixpounder/seagul_core"
+repository = "https://github.com/sixpounder/seagul_core"
+license = "GPL-2.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
