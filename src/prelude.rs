@@ -72,9 +72,9 @@ impl From<&str> for RgbChannel {
     }
 }
 
-impl Into<u8> for RgbChannel {
-    fn into(self) -> u8 {
-        match self {
+impl From<RgbChannel> for u8 {
+    fn from(val: RgbChannel) -> Self {
+        match val {
             RgbChannel::Red => { 0 }
             RgbChannel::Green => { 1 }
             RgbChannel::Blue => { 2 }
@@ -82,9 +82,9 @@ impl Into<u8> for RgbChannel {
     }
 }
 
-impl Into<usize> for RgbChannel {
-    fn into(self) -> usize {
-        match self {
+impl From<RgbChannel> for usize {
+    fn from(val: RgbChannel) -> Self {
+        match val {
             RgbChannel::Red => { 0 }
             RgbChannel::Green => { 1 }
             RgbChannel::Blue => { 2 }
@@ -92,12 +92,104 @@ impl Into<usize> for RgbChannel {
     }
 }
 
-impl Into<usize> for &RgbChannel {
-    fn into(self) -> usize {
-        match self {
+impl From<&RgbChannel> for usize {
+    fn from(val: &RgbChannel) -> Self {
+        match val {
             RgbChannel::Red => { 0 }
             RgbChannel::Green => { 1 }
             RgbChannel::Blue => { 2 }
+        }
+    }
+}
+
+/// Enumerates supported image formats
+pub enum ImageFormat {
+    Jpeg,
+    Png,
+    Bmp
+}
+
+impl From<image::ImageFormat> for ImageFormat {
+    fn from(f: image::ImageFormat) -> Self {
+        f.into()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CompressionType {
+    /// Default compression level
+    Default,
+    /// Fast, minimal compression
+    Fast,
+    /// High compression level
+    Best,
+    /// Huffman coding compression
+    Huffman,
+    /// Run-length encoding compression
+    Rle,
+}
+
+impl From<image::png::CompressionType> for CompressionType {
+    fn from(original_type: image::png::CompressionType) -> Self {
+        match original_type {
+            image::png::CompressionType::Default => Self::Default,
+            image::png::CompressionType::Fast => Self::Fast,
+            image::png::CompressionType::Best => Self::Best,
+            image::png::CompressionType::Huffman => Self::Huffman,
+            image::png::CompressionType::Rle => Self::Rle,
+            _ => Self::Default
+        }
+    }
+}
+
+impl From<CompressionType> for image::png::CompressionType {
+    fn from(val: CompressionType) -> Self {
+        match val {
+            CompressionType::Default => image::png::CompressionType::Default,
+            CompressionType::Fast => image::png::CompressionType::Fast,
+            CompressionType::Best => image::png::CompressionType::Best,
+            CompressionType::Huffman => image::png::CompressionType::Huffman,
+            CompressionType::Rle => image::png::CompressionType::Rle,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum FilterType {
+    /// No processing done, best used for low bit depth greyscale or data with a
+    /// low color count
+    NoFilter,
+    /// Filters based on previous pixel in the same scanline
+    Sub,
+    /// Filters based on the scanline above
+    Up,
+    /// Filters based on the average of left and right neighbor pixels
+    Avg,
+    /// Algorithm that takes into account the left, upper left, and above pixels
+    Paeth,
+}
+
+impl From<image::png::FilterType> for FilterType {
+    fn from(original_filter: image::png::FilterType) -> Self {
+        match original_filter {
+            image::png::FilterType::NoFilter => Self::NoFilter,
+            image::png::FilterType::Sub => Self::Sub,
+            image::png::FilterType::Up => Self::Up,
+            image::png::FilterType::Avg => Self::Avg,
+            image::png::FilterType::Paeth => Self::Paeth,
+            _ => Self::NoFilter,
+        }
+    }
+}
+
+impl From<FilterType> for image::png::FilterType {
+    fn from(val: FilterType) -> Self {
+        match val {
+            FilterType::NoFilter => image::png::FilterType::NoFilter,
+            FilterType::Sub => image::png::FilterType::Sub,
+            FilterType::Up => image::png::FilterType::Up,
+            FilterType::Avg => image::png::FilterType::Avg,
+            FilterType::Paeth => image::png::FilterType::Paeth,
         }
     }
 }
@@ -121,6 +213,9 @@ pub trait ImageRules {
 
     /// If the message is spread across the image
     fn set_spread(&mut self, value: bool) -> &mut Self;
+
+    /// Sets a byte value to use for message padding across the image
+    fn set_padding(&mut self, value: &str) -> &mut Self;
 
     /// Starting position for the encoding. Irrelevant if spread is true
     fn set_position(&mut self, value: ImagePosition) -> &mut Self;
@@ -147,17 +242,4 @@ pub trait ImageRules {
 
     /// Starting position for the encoding. Irrelevant if spread is true
     fn get_position(&self) -> &ImagePosition;
-}
-
-/// Enumerates supported image formats
-pub enum ImageFormat {
-    Jpeg,
-    Png,
-    Bmp
-}
-
-impl From<image::ImageFormat> for ImageFormat {
-    fn from(f: image::ImageFormat) -> Self {
-        f.into()
-    }
 }
