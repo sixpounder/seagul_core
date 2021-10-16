@@ -11,10 +11,12 @@
 //! last 2 bits on the blue channel of each pixel to encode them
 //!
 //! ```ignore
-//! let encode_result = super::ImageEncoder::from("source.png")
+//! # use seagul_core::prelude::*;
+//! # use seagul_core::encoder::ImageEncoder;
+//! let encode_result = ImageEncoder::from("source.png")
 //!     .set_use_n_lsb(2)
 //!     .set_use_channel(RgbChannel::Blue)
-//!     .encode_data(
+//!     .encode_bytes(
 //!         b"
 //!         Midway upon the journey of our life
 //!         I found myself within a forest dark,
@@ -41,6 +43,8 @@
 //! ## Decode
 //! 
 //! ```ignore
+//! # use seagul_core::prelude::*;
+//! # use seagul_core::decoder::ImageDecoder;
 //! let decoded = ImageDecoder::from("encoded.png")
 //!     .set_use_n_lsb(2)
 //!     .set_use_channel(RgbChannel::Blue)
@@ -49,7 +53,8 @@
 //! 
 //! assert!(decoded.is_ok());
 //! 
-//! let decoded = decoded.unwrap().as_raw();
+//! let decoded = decoded.unwrap();
+//! let decoded_string = decoded.as_raw();
 //! 
 //! println!("Raw decoded:\n{}", decoded_string);
 //! 

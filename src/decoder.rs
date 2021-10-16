@@ -234,4 +234,8 @@ impl<'a> ImageRules for ImageDecoder<'_> {
     fn get_position(&self) -> &ImagePosition {
         &self.encoding_position
     }
+
+    fn set_padding(&mut self, _: &str) -> &mut Self {
+        self
+    }
 }
