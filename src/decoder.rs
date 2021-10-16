@@ -3,14 +3,14 @@ use std::{borrow::Cow, fs::File, string::FromUtf8Error, time::Duration};
 use bitvec::{order::Lsb0, view::BitView};
 use image::{DynamicImage, EncodableLayout};
 
-use crate::prelude::{ImageRules, ImagePosition, RgbChannel};
+use crate::prelude::{ImagePosition, ImageRules, RgbChannel};
 
 const BYTE_STEP: usize = std::mem::size_of::<u8>() * 8;
 
 pub struct DecodedImage {
     data: Vec<u8>,
     hit_marker: bool,
-    elapsed: std::time::Duration
+    elapsed: std::time::Duration,
 }
 
 impl DecodedImage {
@@ -164,7 +164,7 @@ impl<'a> ImageDecoder<'a> {
         Ok(DecodedImage {
             data: decoded,
             hit_marker,
-            elapsed: (end - start)
+            elapsed: (end - start),
         })
     }
 }

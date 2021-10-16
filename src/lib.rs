@@ -10,7 +10,7 @@
 //! Read an image and resave it with some verses encoded into it, using the
 //! last 2 bits on the blue channel of each pixel to encode them
 //!
-//! ```rust
+//! ```ignore
 //! let encode_result = super::ImageEncoder::from("source.png")
 //!     .set_use_n_lsb(2)
 //!     .set_use_channel(RgbChannel::Blue)
@@ -40,7 +40,7 @@
 //!
 //! ## Decode
 //! 
-//! ```rust
+//! ```ignore
 //! let decoded = ImageDecoder::from("encoded.png")
 //!     .set_use_n_lsb(2)
 //!     .set_use_channel(RgbChannel::Blue)

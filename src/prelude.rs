@@ -3,7 +3,7 @@ use std::ops::Deref;
 use image::Primitive;
 
 pub struct Image {
-    inner: image::DynamicImage
+    inner: image::DynamicImage,
 }
 
 impl Deref for Image {
@@ -21,7 +21,7 @@ pub enum ImagePosition {
     BottomLeft,
     BottomRight,
     Center,
-    At(u32, u32)
+    At(u32, u32),
 }
 
 /// Describes an RGB color
@@ -52,7 +52,7 @@ impl<T: Primitive> Into<image::Rgb<T>> for Rgb<T> {
 pub enum RgbChannel {
     Red,
     Green,
-    Blue
+    Blue,
 }
 
 impl AsRef<RgbChannel> for RgbChannel {
@@ -67,7 +67,7 @@ impl From<&str> for RgbChannel {
             "red" | "r" => RgbChannel::Red,
             "green" | "g" => RgbChannel::Green,
             "blue" | "b" => RgbChannel::Blue,
-            _ => RgbChannel::Blue
+            _ => RgbChannel::Blue,
         }
     }
 }
@@ -75,9 +75,9 @@ impl From<&str> for RgbChannel {
 impl Into<u8> for RgbChannel {
     fn into(self) -> u8 {
         match self {
-            RgbChannel::Red => { 0 }
-            RgbChannel::Green => { 1 }
-            RgbChannel::Blue => { 2 }
+            RgbChannel::Red => 0,
+            RgbChannel::Green => 1,
+            RgbChannel::Blue => 2,
         }
     }
 }
@@ -85,9 +85,9 @@ impl Into<u8> for RgbChannel {
 impl Into<usize> for RgbChannel {
     fn into(self) -> usize {
         match self {
-            RgbChannel::Red => { 0 }
-            RgbChannel::Green => { 1 }
-            RgbChannel::Blue => { 2 }
+            RgbChannel::Red => 0,
+            RgbChannel::Green => 1,
+            RgbChannel::Blue => 2,
         }
     }
 }
@@ -95,9 +95,9 @@ impl Into<usize> for RgbChannel {
 impl Into<usize> for &RgbChannel {
     fn into(self) -> usize {
         match self {
-            RgbChannel::Red => { 0 }
-            RgbChannel::Green => { 1 }
-            RgbChannel::Blue => { 2 }
+            RgbChannel::Red => 0,
+            RgbChannel::Green => 1,
+            RgbChannel::Blue => 2,
         }
     }
 }
@@ -153,7 +153,7 @@ pub trait ImageRules {
 pub enum ImageFormat {
     Jpeg,
     Png,
-    Bmp
+    Bmp,
 }
 
 impl From<image::ImageFormat> for ImageFormat {

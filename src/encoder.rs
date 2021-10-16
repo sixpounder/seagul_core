@@ -3,7 +3,7 @@ use std::{fmt::Display, fs::File};
 use bitvec::prelude::*;
 use image::{DynamicImage, EncodableLayout, GenericImageView, Pixel};
 
-use crate::prelude::{ImageRules, ImageFormat, ImagePosition, Rgb, RgbChannel};
+use crate::prelude::{ImageFormat, ImagePosition, ImageRules, Rgb, RgbChannel};
 
 /// Describes a color change to a set of coordinates (0, 1) from (2) to (3)
 #[derive(Debug)]
@@ -150,7 +150,6 @@ impl<R: std::io::Read + ?Sized> From<&mut R> for ImageEncoder {
 }
 
 impl ImageEncoder {
-
     /// Encodes a string into the source image for this decoder
     pub fn encode_string(&self, data: String) -> Result<EncodedImage, String> {
         self.encode_data(data.as_bytes())
@@ -208,9 +207,9 @@ impl ImageEncoder {
                     let mut current_byte_iter_count = 0;
                     let mut current_byte_map = EncodeMap::new();
                     current_byte_map.encoded_byte = byte_to_encode.clone();
-    
+
                     let bits_to_encode = byte_to_bits(byte_to_encode);
-    
+
                     if let Some(bits_ptr) = bits_to_encode {
                         // eprintln!("Encoding byte (lsb): {}", bits_ptr);
                         while current_byte_iter_count < std::mem::size_of::<u8>() * 8 {
@@ -233,7 +232,7 @@ impl ImageEncoder {
                                 for i in 0..self.lsb_c {
                                     bits_to_modify.set(i, bits_to_encode_slice[i]);
                                 }
-    
+
                                 color_change.3 = pixel_to_modify.2.clone().into();
                                 current_byte_map.affected_points.push(color_change);
                                 current_byte_iter_count += self.lsb_c;
@@ -242,7 +241,7 @@ impl ImageEncoder {
                             }
                         }
                     }
-    
+
                     encode_maps.push(current_byte_map);
                 }
 
@@ -341,7 +340,8 @@ fn bytes_needed_for_data<R>(data: &[u8], rules: &R) -> usize
 where
     R: ImageRules,
 {
-    (((data.len() * 8) - (rules.get_offset() * 3 * 8)) * rules.get_step_by_n_pixels()) / rules.get_use_n_lsb()
+    (((data.len() * 8) - (rules.get_offset() * 3 * 8)) * rules.get_step_by_n_pixels())
+        / rules.get_use_n_lsb()
     // total data bits   skipped pixels size in bits     iterator step size               bits used per pixel
 }
 
@@ -355,21 +355,8 @@ fn byte_to_bits(byte: &u8) -> Option<&BitSlice<Lsb0, u8>> {
     bits
 }
 
-#[allow(dead_code)]
-fn eprint_color_changes(byte_map: &EncodeMap, steps: usize) {
-    eprint!(
-        "Encoded in {} steps, {} pixel(s) modified -> ",
-        steps,
-        byte_map.affected_points.len()
-    );
-    for item in &byte_map.affected_points {
-        eprint!(" | {}", item);
-    }
-    eprintln!("\n\n");
-}
-
 #[cfg(test)]
-mod test {
+mod tests {
     fn ensure_out_dir() -> std::io::Result<()> {
         std::fs::create_dir_all("tests/out")
     }
