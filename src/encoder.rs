@@ -3,7 +3,7 @@ use std::{fmt::Display, fs::File};
 use bitvec::{prelude::*, view::AsBits};
 use image::{DynamicImage, EncodableLayout, GenericImageView, Pixel};
 
-use crate::prelude::{CompressionType, FilterType, ImageFormat, ImagePosition, ImageRules, Rgb, RgbChannel};
+use crate::{conversion::byte_to_bits, prelude::{CompressionType, FilterType, ImageFormat, ImagePosition, ImageRules, Rgb, RgbChannel}};
 
 /// Describes a color change for a pixel at coordinates `(.0, .1)` from color `.2` to color `.3`
 #[derive(Debug)]
@@ -417,16 +417,6 @@ where
     (((data.len() * 8) - (rules.get_offset() * 3 * 8)) * rules.get_step_by_n_pixels())
         / rules.get_use_n_lsb()
     // total data bits   skipped pixels size in bits     iterator step size               bits used per pixel
-}
-
-fn byte_to_bits(byte: &u8) -> Option<&BitSlice<Lsb0, u8>> {
-    let raw_bits = bitvec::ptr::bitslice_from_raw_parts::<Lsb0, u8>(BitPtr::from_ref(byte), 8);
-    let bits;
-    unsafe {
-        bits = raw_bits.as_ref();
-    }
-
-    bits
 }
 
 #[allow(dead_code)]

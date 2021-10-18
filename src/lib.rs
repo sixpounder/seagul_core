@@ -68,6 +68,8 @@
 /// The module holding all the base components and traits for the library
 pub mod prelude;
 
+mod conversion;
+
 /// The module holding all the encoders
 pub mod encoder;
 
